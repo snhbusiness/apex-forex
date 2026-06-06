@@ -291,7 +291,7 @@ header{position:sticky;top:0;z-index:30;margin:0 -16px 8px;padding:calc(var(--sa
 
   <div class="progress" id="progress">
     <div class="pstep" data-step="0"><span class="s"></span> Récupération des données marché (FMP)</div>
-    <div class="pstep" data-step="1"><span class="s"></span> Calcul des niveaux techniques</div>
+    <div class="pstep" data-step="1"><span class="s"></span> Niveaux techniques + RSI (daily & H4)</div>
     <div class="pstep" data-step="2"><span class="s"></span> Synthèse multi-framework (Claude + web)</div>
     <div class="pstep" data-step="3"><span class="s"></span> Assemblage du brief</div>
   </div>
@@ -415,6 +415,11 @@ async function getDaily(pair){
   const j = await fmpGet('/api/v3/historical-price-full/' + pair + '?timeseries=40');
   return (j && Array.isArray(j.historical)) ? j.historical : null; // desc (récent -> ancien)
 }
+async function getIntraday(pair, interval){
+  const j = await fmpGet('/api/v3/historical-chart/' + interval + '/' + pair);
+  if(!Array.isArray(j) || !j.length) return null;
+  return j.slice().sort((a,b)=> new Date(b.date) - new Date(a.date)); // force desc (récent -> ancien)
+}
 async function getCalendar(from,to){
   const j = await fmpGet('/api/v3/economic_calendar?from='+from+'&to='+to);
   return Array.isArray(j) ? j : [];
@@ -427,6 +432,21 @@ async function getTreasury(from,to){
 /* ---------- calcul niveaux techniques ---------- */
 function decimals(pair){ return pair.includes('JPY')?3 : (pair.startsWith('XAU')?2:5); }
 function pipSize(pair){ return pair.includes('JPY')?0.01 : (pair.startsWith('XAU')?0.1:0.0001); }
+// RSI(14) de Wilder. closesChrono = clôtures dans l'ordre ancien -> récent
+function rsi(closesChrono, period){
+  period = period||14;
+  if(!closesChrono || closesChrono.length < period+1) return null;
+  let g=0,l=0;
+  for(let i=1;i<=period;i++){ const d=closesChrono[i]-closesChrono[i-1]; if(d>=0)g+=d; else l-=d; }
+  let ag=g/period, al=l/period;
+  for(let i=period+1;i<closesChrono.length;i++){
+    const d=closesChrono[i]-closesChrono[i-1];
+    ag=(ag*(period-1)+(d>0?d:0))/period;
+    al=(al*(period-1)+(d<0?-d:0))/period;
+  }
+  if(al===0) return 100;
+  return +(100-100/(1+ag/al)).toFixed(1);
+}
 function computeTech(pair, c){
   if(!c || c.length<16) return null;
   const d = decimals(pair);
@@ -443,13 +463,30 @@ function computeTech(pair, c){
   const mh=hi(m), ml=lo(m), rng=mh-ml;
   const fib = p => +(mh - rng*p).toFixed(d);
   const r = v => +Number(v).toFixed(d);
+  const closesD = c.map(x=>x.close).reverse();   // ancien -> récent pour RSI
   return {
     pair, decimals:d, last:r(cur.close), pip:pipSize(pair),
     pdh:r(prev.high), pdl:r(prev.low),
     wkH:r(hi(w)), wkL:r(lo(w)),
     moH:r(mh), moL:r(ml),
     atr:r(atr), atrPips:Math.round(atr/pipSize(pair)),
-    fib382:fib(.382), fib50:fib(.5), fib618:fib(.618)
+    fib382:fib(.382), fib50:fib(.5), fib618:fib(.618),
+    rsiD: rsi(closesD,14)
+  };
+}
+// intraday H4 : RSI + plus haut/bas récents (24h & 48h) pour entrées sur cassure
+function computeIntra(pair, c){
+  if(!c || c.length<16) return null;
+  const d = decimals(pair); const r=v=>+Number(v).toFixed(d);
+  const recent = c.slice(0,6);   // ~24h (6 bougies H4)
+  const rec2   = c.slice(0,12);  // ~48h
+  const closes = c.map(x=>x.close).reverse();
+  return {
+    rsiH4: rsi(closes,14),
+    h4H: r(Math.max(...recent.map(x=>x.high))),
+    h4L: r(Math.min(...recent.map(x=>x.low))),
+    h4H48: r(Math.max(...rec2.map(x=>x.high))),
+    h4L48: r(Math.min(...rec2.map(x=>x.low)))
   };
 }
 
@@ -466,6 +503,7 @@ const SYS = [
 "",
 "RÈGLES TP/SL (ancrage technique OBLIGATOIRE) : chaque setup pose ses niveaux sur les NIVEAUX TECHNIQUES RÉELS fournis (PDH/PDL, plus haut/bas semaine & mois, ATR14, Fibo). TP1 = premier obstacle technique atteignable. TP2 = obstacle suivant, plafonné par l'ATR(14) sur la séance. SL = derrière un niveau d'invalidation réel (au-delà d'un PDH/PDL ou swing), jamais un chiffre rond arbitraire. Niveaux en PRIX absolus cohérents avec 'last', logique courte par niveau, ratio R:R (≥ 1:1.5 sur TP1).",
 "RÈGLES D'ENTRÉE (anti-trade-raté) : fournis TOUJOURS DEUX entrées. 'entry_market' = entrée agressive au marché ou sur cassure dans le sens du trade (pour ne PAS rater un mouvement directionnel d'un seul trait, fréquent sur news). 'entry_limit' = entrée limite sur pullback (meilleur prix mais risque de non-remplissage). Ajoute 'no_fill_rule' : que faire si le pullback n'arrive pas (ex : entrer sur cassure de tel niveau après N bougies). Si un catalyseur à fort impact est imminent (NFP, CPI, décision banque centrale...), renseigne 'catalyst' avec sa date et privilégie explicitement l'entrée agressive (risque de mouvement one-way). Le SL et les TP s'appliquent aux deux entrées.",
+"DONNÉES TECHNIQUES FOURNIES : utilise le RSI daily et H4 pour lire le momentum (RSI<30 survendu, >70 suracheté) dans le point 7 'technical'. Utilise les bornes intraday H4 [bas/haut 24-48h] comme niveaux de cassure réels pour poser 'entry_market'. Si une section 'CHIFFRES DÉJÀ PUBLIÉS (48h)' est fournie, intègre ces stats AU PASSÉ dans 'economic_data' (actual vs prévu) — ne les présente jamais comme à venir et n'invente pas leurs valeurs.",
 "",
 "confidence par data point : 'high' (source vérifiée), 'medium' (déduction logique), 'low' (hypothèse).",
 "conviction du thème : entier 1 à 5 (5 = convergence de 4+ frameworks).",
@@ -499,22 +537,37 @@ const SYS = [
 ].join("\n");
 
 /* ---------- contexte marché formaté pour le prompt ---------- */
-function buildMarketText(techs, quotes, cal, tre, today){
+function buildMarketText(techs, quotes, cal, actuals, tre, today){
   let t = "DATE DU JOUR : "+today+"\nSESSION : "+currentSession+"\n\n";
-  t += "=== NIVEAUX TECHNIQUES (calculés, FMP daily) ===\n";
+  t += "=== NIVEAUX TECHNIQUES (calculés FMP : daily + H4) ===\n";
   if(techs.length){
     techs.forEach(x=>{ t +=
-      x.pair+" last="+x.last+" | PDH="+x.pdh+" PDL="+x.pdl+" | wkH="+x.wkH+" wkL="+x.wkL+
-      " | moH="+x.moH+" moL="+x.moL+" | ATR14="+x.atr+" ("+x.atrPips+"pips) | Fibo 38.2="+x.fib382+" 50="+x.fib50+" 61.8="+x.fib618+"\n"; });
+      x.pair+" last="+x.last+
+      " | PDH="+x.pdh+" PDL="+x.pdl+" | wkH="+x.wkH+" wkL="+x.wkL+" | moH="+x.moH+" moL="+x.moL+
+      " | ATR14="+x.atr+" ("+x.atrPips+"pips)"+
+      " | Fibo 38.2="+x.fib382+" 50="+x.fib50+" 61.8="+x.fib618+
+      (x.rsiD!=null?" | RSI_D="+x.rsiD:"")+(x.rsiH4!=null?" RSI_H4="+x.rsiH4:"")+
+      (x.h4H!=null?" | H4 24h["+x.h4L+"/"+x.h4H+"] 48h["+x.h4L48+"/"+x.h4H48+"]":"")+
+      "\n"; });
+    t += "(RSI<30 survendu, >70 suracheté ; bornes H4 [bas/haut] = niveaux de cassure intraday)\n";
   } else { t += "(indisponible — utilise la recherche web pour les niveaux ; signale confidence faible)\n"; }
   if(quotes.length){
     t += "\n=== QUOTES ===\n";
     quotes.forEach(q=>{ if(q&&q.symbol){ const ch=Number(q.changesPercentage||0); t += q.symbol+" "+q.price+" ("+(ch>=0?'+':'')+ch.toFixed(2)+"%)\n"; } });
   }
+  const MAJ=['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','CNY'];
+  if(actuals && actuals.length){
+    const done = actuals.filter(e=>MAJ.includes(e.currency) && e.actual!=null && e.actual!=='');
+    if(done.length){
+      t += "\n=== CHIFFRES DÉJÀ PUBLIÉS (48h — actual vs prévu) ===\n";
+      done.slice(-24).forEach(e=>{ t += (e.date||'').slice(0,16)+" "+e.currency+" "+(e.event||'')+
+        " : actual "+e.actual+(e.estimate!=null?" vs est "+e.estimate:"")+(e.previous!=null?" (préc "+e.previous+")":"")+"\n"; });
+      t += "(ces chiffres sont SORTIS — à traiter au passé)\n";
+    }
+  }
   if(cal && cal.length){
-    t += "\n=== CALENDRIER ÉCO (7j, devises majeures) ===\n";
-    const MAJ=['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','CNY'];
-    cal.filter(e=>MAJ.includes(e.currency) && (!e.impact || ['High','Medium','high','medium'].includes(e.impact)))
+    t += "\n=== CALENDRIER À VENIR (7j, devises majeures) ===\n";
+    cal.filter(e=>MAJ.includes(e.currency) && (e.actual==null||e.actual==='') && (!e.impact || ['High','Medium','high','medium'].includes(e.impact)))
        .slice(0,24).forEach(e=>{ t += (e.date||'').slice(0,16)+" "+e.currency+" "+(e.event||'')+(e.estimate!=null?" (est "+e.estimate+")":"")+"\n"; });
   }
   if(tre && tre.length){
@@ -570,29 +623,39 @@ async function generate(){
   ['0','1','2','3'].forEach(n=>setStep(n,''));
   const today = new Date().toISOString().slice(0,10);
   const to = new Date(Date.now()+7*864e5).toISOString().slice(0,10);
+  const from48 = new Date(Date.now()-2*864e5).toISOString().slice(0,10);
 
   try{
-    // 1 — données FMP (best-effort)
+    // 1 — données FMP (best-effort) : quotes, calendrier à venir, chiffres publiés 48h, treasury
     setStep(0,'active');
     const pairs = S.pairs.split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);
-    let quotes=[], cal=[], tre=[];
+    let quotes=[], cal=[], actuals=[], tre=[];
     if(S.fmp){
-      [quotes, cal, tre] = await Promise.all([ getQuotes(pairs), getCalendar(today,to), getTreasury(today,today) ]);
+      [quotes, cal, actuals, tre] = await Promise.all([
+        getQuotes(pairs), getCalendar(today,to), getCalendar(from48,today), getTreasury(from48,today)
+      ]);
     }
     setStep(0,'done');
 
-    // 2 — niveaux techniques
+    // 2 — niveaux techniques : daily + intraday H4 (RSI, swings de cassure)
     setStep(1,'active');
     const techs=[];
     if(S.fmp){
-      const dailies = await Promise.all(pairs.map(p=>getDaily(p)));
-      pairs.forEach((p,i)=>{ const t=computeTech(p,dailies[i]); if(t) techs.push(t); });
+      const [dailies, h4s] = await Promise.all([
+        Promise.all(pairs.map(p=>getDaily(p))),
+        Promise.all(pairs.map(p=>getIntraday(p,'4hour')))
+      ]);
+      pairs.forEach((p,i)=>{
+        const t=computeTech(p,dailies[i]); if(!t) return;
+        const intra=computeIntra(p,h4s[i]); if(intra) Object.assign(t,intra);
+        techs.push(t);
+      });
     }
     setStep(1,'done');
 
     // 3 — synthèse Claude
     setStep(2,'active');
-    const marketText = buildMarketText(techs, quotes, cal, tre, today);
+    const marketText = buildMarketText(techs, quotes, cal, actuals, tre, today);
     const brief = await callClaude(marketText, today);
     setStep(2,'done');
 
