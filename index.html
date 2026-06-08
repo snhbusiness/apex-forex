@@ -674,12 +674,18 @@ async function callClaude(marketText, today){
 }
 
 /* ---------- orchestration ---------- */
+let _wakeLock=null;
+async function acquireWake(){ try{ if('wakeLock' in navigator){ _wakeLock=await navigator.wakeLock.request('screen'); } }catch(e){} }
+async function releaseWake(){ try{ if(_wakeLock){ await _wakeLock.release(); } }catch(e){} _wakeLock=null; }
+// si l'écran a été masqué puis revient pendant une génération, on reprend le verrou
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && $('#genBtn') && $('#genBtn').disabled){ acquireWake(); } });
 function setStep(n, state){ const s=document.querySelector('.pstep[data-step="'+n+'"]'); if(s){s.className='pstep '+state;} }
 async function generate(){
   if(!S.anth){ openSheet('#setSheet'); toast("Ajoute ta clé Anthropic d'abord"); return; }
   $('#err').innerHTML=''; $('#cards').innerHTML=''; $('#headline').innerHTML='';
   $('#sentiment').style.display='none';
   $('#genBtn').disabled=true;
+  acquireWake(); // garde l'écran allumé pendant la génération (évite la coupure réseau en veille)
   const prog=$('#progress'); prog.classList.add('show');
   ['0','1','2','3'].forEach(n=>setStep(n,''));
   const today = new Date().toISOString().slice(0,10);
@@ -734,6 +740,7 @@ async function generate(){
       '<br><br>Vérifie tes clés dans ⚙. Si l\'appel FMP échoue (réseau/CORS), active le proxy CORS. Le brief reste possible avec la recherche web seule.</div>';
   }finally{
     $('#genBtn').disabled=false;
+    releaseWake(); // relâche l'écran : il peut se remettre en veille normalement
   }
 }
 
