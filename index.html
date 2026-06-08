@@ -1070,9 +1070,20 @@ const DEMO = {
   else { renderBrief(DEMO); }
 })();
 
-/* service worker */
+/* service worker + mise à jour automatique */
 if('serviceWorker' in navigator){
-  window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  const hadController = !!navigator.serviceWorker.controller; // déjà contrôlée = pas une 1ère install
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(refreshing) return; refreshing=true;
+    if(hadController) location.reload(); // nouvelle version active → recharge une fois
+  });
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      reg.update().catch(()=>{});                       // cherche une MAJ à chaque ouverture
+      setInterval(()=>reg.update().catch(()=>{}), 60*60*1000); // et toutes les heures si l'app reste ouverte
+    }).catch(()=>{});
+  });
 }
 </script>
 </body>
