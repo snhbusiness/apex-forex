@@ -504,19 +504,27 @@ function computeTech(pair, c){
     rsiD: rsi(closesD,14)
   };
 }
-// intraday H4 : RSI + plus haut/bas récents (24h & 48h) pour entrées sur cassure
+// intraday H4 : RSI + plus haut/bas récents (24h & 48h) + ATR intraday pour entrées/SL/TP intraday
 function computeIntra(pair, c){
   if(!c || c.length<16) return null;
   const d = decimals(pair); const r=v=>+Number(v).toFixed(d);
   const recent = c.slice(0,6);   // ~24h (6 bougies H4)
   const rec2   = c.slice(0,12);  // ~48h
   const closes = c.map(x=>x.close).reverse();
+  // ATR(14) sur bougies H4 = amplitude intraday typique (pour dimensionner SL/TP intraday)
+  let trs=[];
+  for(let i=0;i<14;i++){ const a=c[i],b=c[i+1]; if(!b)break;
+    trs.push(Math.max(a.high-a.low, Math.abs(a.high-b.close), Math.abs(a.low-b.close))); }
+  const atrH4 = trs.length ? trs.reduce((x,y)=>x+y,0)/trs.length : 0;
+  const lastRange = c[0] ? (c[0].high - c[0].low) : 0;
   return {
     rsiH4: rsi(closes,14),
     h4H: r(Math.max(...recent.map(x=>x.high))),
     h4L: r(Math.min(...recent.map(x=>x.low))),
     h4H48: r(Math.max(...rec2.map(x=>x.high))),
-    h4L48: r(Math.min(...rec2.map(x=>x.low)))
+    h4L48: r(Math.min(...rec2.map(x=>x.low))),
+    atrH4: r(atrH4), atrH4Pips: Math.round(atrH4/pipSize(pair)),
+    lastH4RangePips: Math.round(lastRange/pipSize(pair))
   };
 }
 
@@ -531,9 +539,10 @@ const SYS = [
 "",
 "RÈGLES DATES (anti-hallucination) : chaque catalyseur a une date AAAA-MM-JJ vérifiée. Ne JAMAIS présenter comme 'à venir/ce soir' un événement DÉJÀ PASSÉ par rapport à la date du jour fournie. Si incertain : date 'à vérifier'. Utilise la recherche web pour vérifier dates, géopolitique et news fraîches.",
 "",
-"RÈGLES TP/SL (ancrage technique OBLIGATOIRE) : chaque setup pose ses niveaux sur les NIVEAUX TECHNIQUES RÉELS fournis (PDH/PDL, plus haut/bas semaine & mois, ATR14, Fibo). TP1 = premier obstacle technique atteignable. TP2 = obstacle suivant, plafonné par l'ATR(14) sur la séance. SL = derrière un niveau d'invalidation réel (au-delà d'un PDH/PDL ou swing), jamais un chiffre rond arbitraire. Niveaux en PRIX absolus cohérents avec 'last', logique courte par niveau, ratio R:R (≥ 1:1.5 sur TP1).",
-"RÈGLES D'ENTRÉE (anti-trade-raté) : fournis TOUJOURS DEUX entrées. 'entry_market' = entrée agressive au marché ou sur cassure dans le sens du trade (pour ne PAS rater un mouvement directionnel d'un seul trait, fréquent sur news). 'entry_limit' = entrée limite sur pullback (meilleur prix mais risque de non-remplissage). Ajoute 'no_fill_rule' : que faire si le pullback n'arrive pas (ex : entrer sur cassure de tel niveau après N bougies). Si un catalyseur à fort impact est imminent (NFP, CPI, décision banque centrale...), renseigne 'catalyst' avec sa date et privilégie explicitement l'entrée agressive (risque de mouvement one-way). Le SL et les TP s'appliquent aux deux entrées.",
-"DONNÉES TECHNIQUES FOURNIES : utilise le RSI daily et H4 pour lire le momentum (RSI<30 survendu, >70 suracheté) dans le point 7 'technical'. Utilise les bornes intraday H4 [bas/haut 24-48h] comme niveaux de cassure réels pour poser 'entry_market'. Si une section 'CHIFFRES DÉJÀ PUBLIÉS (48h)' est fournie, intègre ces stats AU PASSÉ dans 'economic_data' (actual vs prévu) — ne les présente jamais comme à venir et n'invente pas leurs valeurs.",
+"RÈGLE HORIZON & PROXIMITÉ (INTRADAY ADAPTATIF) : chaque setup choisit son horizon selon la structure la plus propre — \"horizon\":\"scalp\" (lecture M15, sortie en minutes à 1-2h) ou \"horizon\":\"day\" (lecture H1, sortie dans la journée). Les entrées doivent être PROCHES du prix 'last'. Si l'entrée la plus propre est à plus d'environ 1,5× l'ATR_H4 (fourni, en pips) du prix actuel, ne la propose PAS comme actionnable : mets \"status\":\"attente\" et décris le déclencheur/niveau à surveiller dans 'no_fill_rule'. Sinon \"status\":\"actionnable\". Vise des trades du jour, pas du swing.",
+"RÈGLES TP/SL INTRADAY (ancrage structure, distances NON fixes) : SL = derrière l'invalidation de structure intraday la plus proche (swing M15/H1, borne H4 24-48h, order block) — la distance en pips est CELLE QUE DONNE LA STRUCTURE du moment, jamais un nombre arbitraire. TP1 = première liquidité intraday opposée (borne H4, PDH/PDL, plus haut/bas de session) ≈ 1 à 1,5R. TP2 = liquidité intraday suivante ≈ 2 à 3R, PLAFONNÉ par ~2-3× ATR_H4 (PAS l'ATR daily). R:R ≥ 1:1.5 sur TP1, sinon \"status\":\"attente\". Niveaux en PRIX absolus cohérents avec 'last'.",
+"RÈGLES D'ENTRÉE (anti-trade-raté) : fournis TOUJOURS DEUX entrées. 'entry_market' = agressive, sur cassure/clôture M15-H1 d'un niveau intraday dans le sens du trade (pour ne pas rater un mouvement one-way sur news). 'entry_limit' = repli sur OB/borne intraday (meilleur prix, risque de non-remplissage). 'no_fill_rule' = quoi faire si le repli n'arrive pas (ex : entrer sur cassure de tel niveau après N bougies M15/H1). Si un catalyseur fort est imminent (NFP, CPI, banque centrale), renseigne 'catalyst' daté et privilégie l'entrée agressive. SL et TP s'appliquent aux deux entrées.",
+"DONNÉES INTRADAY À UTILISER : RSI_H4 pour le momentum intraday (point 7) ; bornes H4 24h/48h + PDH/PDL + plus haut/bas de session = liquidité/niveaux de cassure intraday ; ATR_H4 (pips) pour dimensionner SL/TP intraday. RSI_D et niveaux weekly/monthly = CONTEXTE directionnel seulement, pas pour les cibles. Si 'CHIFFRES DÉJÀ PUBLIÉS (48h)' est fourni, intègre-les AU PASSÉ dans 'economic_data' sans inventer de valeurs.",
 "",
 "confidence par data point : 'high' (source vérifiée), 'medium' (déduction logique), 'low' (hypothèse).",
 "conviction du thème : entier 1 à 5 (5 = convergence de 4+ frameworks).",
@@ -558,10 +567,10 @@ const SYS = [
 '    },',
 '    "tradable_edge":"où est l opportunité concrètement",',
 '    "impacts":[{"pair":"EUR/USD","direction":"short","why":"...",',
-'      "setup":{"entry_market":1.0845,"entry_limit":1.0868,"sl":1.0905,"tp1":1.0795,"tp2":1.074,',
-'      "entry_market_logic":"au marché / sur cassure","entry_limit_logic":"pullback sur pivot",',
-'      "no_fill_rule":"si pas de pullback sous 3 bougies H4, vendre la cassure de 1.0820",',
-'      "catalyst":"NFP US (AAAA-MM-JJ)","sl_logic":"derrière PDH","tp1_logic":"PDL premier obstacle","tp2_logic":"plafonné ATR / Fibo 61.8","rr":"1:1.8"}}]',
+'      "setup":{"horizon":"day","status":"actionnable","entry_market":1.0845,"entry_limit":1.0868,"sl":1.0905,"tp1":1.0795,"tp2":1.074,',
+'      "entry_market_logic":"cassure/clôture H1 sous borne intraday","entry_limit_logic":"repli sur OB intraday",',
+'      "no_fill_rule":"si pas de repli sous 3 bougies H1, vendre la cassure de 1.0820",',
+'      "catalyst":"NFP US (AAAA-MM-JJ)","sl_logic":"derrière swing H1 (invalidation)","tp1_logic":"borne H4 / liquidité intraday","tp2_logic":"plafonné ~2-3x ATR_H4","rr":"1:1.8"}}]',
 '  }]',
 '}'
 ].join("\n");
@@ -578,8 +587,9 @@ function buildMarketText(techs, quotes, cal, actuals, tre, today){
       " | Fibo 38.2="+x.fib382+" 50="+x.fib50+" 61.8="+x.fib618+
       (x.rsiD!=null?" | RSI_D="+x.rsiD:"")+(x.rsiH4!=null?" RSI_H4="+x.rsiH4:"")+
       (x.h4H!=null?" | H4 24h["+x.h4L+"/"+x.h4H+"] 48h["+x.h4L48+"/"+x.h4H48+"]":"")+
+      (x.atrH4Pips!=null?" | ATR_H4="+x.atrH4Pips+"pips (amplitude intraday)":"")+
       "\n"; });
-    t += "(RSI<30 survendu, >70 suracheté ; bornes H4 [bas/haut] = niveaux de cassure intraday)\n";
+    t += "(RSI<30 survendu, >70 suracheté ; bornes H4 [bas/haut] = liquidité intraday ; ATR_H4 = pour dimensionner SL/TP intraday ; ATR14 = contexte daily)\n";
   } else { t += "(indisponible — utilise la recherche web pour les niveaux ; signale confidence faible)\n"; }
   if(quotes.length){
     t += "\n=== QUOTES ===\n";
@@ -847,8 +857,13 @@ function showSetup(ti,ii){
     : lvl('e','Entry',su.entry,su.entry_logic);
   const cat = su.catalyst?'<div class="cat">⚡ Catalyseur : '+esc(su.catalyst)+' — privilégier l\'entrée agressive (risque one-way)</div>':'';
   const chart='<a class="chart-link" href="'+investingUrl(im.pair)+'" target="_blank" rel="noopener noreferrer">📈 Graphique ↗</a>';
-  const html='<div class="setup">'+cat+'<div class="sh"><b>'+arrow(im.direction)+' '+esc(im.pair)+' · '+(d==='long'?'LONG':'SHORT')+'</b>'+
-    '<span class="sh-right">'+(su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+chart+'</span></div><div class="lvls">'+
+  // badges horizon + statut intraday
+  const hz = su.horizon ? '<span class="rr" style="background:rgba(110,180,255,.14);color:#6eb4ff">'+(su.horizon==='scalp'?'⚡ Scalp M15':'📅 Day H1')+'</span>' : '';
+  const isWait = (su.status==='attente');
+  const st = su.status ? '<span class="rr" style="background:'+(isWait?'rgba(230,180,90,.16);color:var(--gold)':'rgba(90,210,150,.14);color:var(--long)')+'">'+(isWait?'⏳ Attente':'✓ Actionnable')+'</span>' : '';
+  const waitBanner = isWait ? '<div class="cat" style="background:rgba(230,180,90,.10);border-color:rgba(230,180,90,.3)">⏳ Entrée trop loin pour de l\'intraday — on surveille le déclencheur, pas d\'entrée immédiate.</div>' : '';
+  const html='<div class="setup">'+cat+waitBanner+'<div class="sh"><b>'+arrow(im.direction)+' '+esc(im.pair)+' · '+(d==='long'?'LONG':'SHORT')+'</b>'+
+    '<span class="sh-right">'+hz+st+(su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+chart+'</span></div><div class="lvls">'+
     entries+
     note('Si pas de fill', su.no_fill_rule)+
     lvl('sl','SL',su.sl,su.sl_logic)+
