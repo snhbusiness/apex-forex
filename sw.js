@@ -1,42 +1,1132 @@
-/* Apex FX — service worker (app shell cache) */
-const CACHE = 'apexfx-v7';
-const SHELL = [
-  './',
-  './index.html',
-  './manifest.json',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png',
-  './icons/favicon-64.png'
-];
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+<title>Apex Forex — Brief Macro</title>
+<meta name="description" content="Brief macro FX multi-framework — cascade 8 points & chaîne de repricing." />
 
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
-});
+<!-- PWA -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0C0C0F" />
+<link rel="icon" type="image/png" href="icons/favicon-64.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Apex FX" />
 
-self.addEventListener('activate', e => {
-  e.waitUntil(
-    caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))
-      .then(() => self.clients.claim())
-  );
-});
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Archivo:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
-self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
-  // Ne jamais mettre en cache les appels API (données live)
-  if (url.hostname.includes('anthropic.com') ||
-      url.hostname.includes('financialmodelingprep.com') ||
-      url.hostname.includes('corsproxy.io')) {
-    return; // laisse passer au réseau
+<style>
+:root{
+  --ink:#0C0C0F; --ink-2:#131218; --ink-3:#1A1922; --ink-4:#22202B;
+  --line:rgba(255,255,255,.08); --line-2:rgba(255,255,255,.14);
+  --text:#ECEAE4; --muted:#928D9C; --muted-2:#6F6A7C;
+  --gold:#E8B454; --gold-hi:#F5D18A; --gold-dim:rgba(232,180,84,.14);
+  --teal:#6CC6BE; --teal-dim:rgba(108,198,190,.13);
+  --long:#54C28C; --long-dim:rgba(84,194,140,.14);
+  --short:#E8746A; --short-dim:rgba(232,116,106,.14);
+  --alert:#E8B454;
+  --rad:18px; --rad-sm:12px;
+  --shadow:0 18px 50px -18px rgba(0,0,0,.7);
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:'Archivo',-apple-system,system-ui,sans-serif;
+  background:var(--ink); color:var(--text);
+  min-height:100dvh; line-height:1.45; letter-spacing:.1px;
+  -webkit-font-smoothing:antialiased;
+  background-image:
+    radial-gradient(900px 500px at 12% -8%, rgba(232,180,84,.10), transparent 60%),
+    radial-gradient(800px 600px at 100% 8%, rgba(108,198,190,.07), transparent 55%);
+  background-attachment:fixed;
+}
+/* grain */
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:1;opacity:.5;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");}
+.wrap{position:relative;z-index:2;max-width:560px;margin:0 auto;padding:0 16px calc(120px + var(--safe-b));}
+
+/* ---------- Header ---------- */
+header{position:sticky;top:0;z-index:30;margin:0 -16px 8px;padding:calc(var(--safe-t) + 12px) 16px 12px;
+  background:linear-gradient(180deg, rgba(12,12,15,.92) 60%, rgba(12,12,15,0));
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);}
+.bar{display:flex;align-items:center;gap:12px}
+.logo{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.logo img{width:34px;height:34px;border-radius:9px;box-shadow:0 4px 14px -4px rgba(232,180,84,.5)}
+.logo .t{display:flex;flex-direction:column;line-height:1}
+.logo .t b{font-family:'Fraunces';font-weight:600;font-size:18px;letter-spacing:.3px}
+.logo .t span{font-size:10.5px;color:var(--muted);letter-spacing:2.5px;text-transform:uppercase;margin-top:3px}
+.icon-btn{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--ink-2);
+  color:var(--text);font-size:17px;display:grid;place-items:center;cursor:pointer;transition:.15s}
+.icon-btn:active{transform:scale(.93)}
+.icon-btn.on{border-color:var(--gold);color:var(--gold)}
+
+.meta-row{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+.date-chip{font-family:'JetBrains Mono';font-size:12px;color:var(--muted);background:var(--ink-2);
+  border:1px solid var(--line);border-radius:999px;padding:6px 11px;text-transform:capitalize}
+.sentiment{font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;padding:6px 11px;border-radius:999px;border:1px solid var(--line)}
+.sentiment.on{background:var(--long-dim);color:var(--long);border-color:transparent}
+.sentiment.off{background:var(--short-dim);color:var(--short);border-color:transparent}
+.sentiment.mixed{background:var(--gold-dim);color:var(--gold);border-color:transparent}
+
+/* ---------- Session segmented + generate ---------- */
+.controls{margin-top:14px}
+.seg{display:flex;gap:4px;background:var(--ink-2);border:1px solid var(--line);border-radius:13px;padding:4px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font-family:'Archivo';font-weight:600;
+  font-size:12.5px;padding:9px 4px;border-radius:9px;cursor:pointer;transition:.15s;letter-spacing:.3px}
+.seg button.active{background:linear-gradient(180deg,var(--ink-4),var(--ink-3));color:var(--text);box-shadow:0 2px 8px rgba(0,0,0,.3)}
+.gen{margin-top:12px;width:100%;border:0;cursor:pointer;border-radius:14px;padding:16px;
+  font-family:'Archivo';font-weight:700;font-size:15px;letter-spacing:.4px;color:#1a1408;
+  background:linear-gradient(135deg,var(--gold-hi),var(--gold));
+  box-shadow:0 12px 30px -10px rgba(232,180,84,.55), inset 0 1px 0 rgba(255,255,255,.4);
+  display:flex;align-items:center;justify-content:center;gap:9px;transition:.15s}
+.gen:active{transform:scale(.985)}
+.gen:disabled{opacity:.6;cursor:default}
+.gen .dot{width:7px;height:7px;border-radius:50%;background:#1a1408}
+
+/* headline */
+.headline{font-family:'Fraunces';font-style:italic;font-weight:500;font-size:18px;line-height:1.35;
+  color:var(--text);margin:18px 2px 6px;opacity:0;animation:rise .6s .05s forwards}
+.headline .q{color:var(--gold);font-style:normal}
+
+/* ---------- progress ---------- */
+.progress{margin:20px 0;display:none}
+.progress.show{display:block}
+.pstep{display:flex;align-items:center;gap:11px;padding:11px 14px;border:1px solid var(--line);
+  border-radius:12px;background:var(--ink-2);margin-bottom:8px;font-size:13.5px;color:var(--muted);transition:.3s}
+.pstep .s{width:18px;height:18px;border-radius:50%;border:2px solid var(--line-2);flex:none;position:relative}
+.pstep.active{color:var(--text);border-color:var(--line-2)}
+.pstep.active .s{border-color:var(--gold);border-top-color:transparent;animation:spin .8s linear infinite}
+.pstep.done{color:var(--text)}
+.pstep.done .s{border-color:var(--long);background:var(--long)}
+.pstep.done .s::after{content:"✓";position:absolute;inset:0;display:grid;place-items:center;font-size:11px;color:#06140d;font-weight:700}
+
+/* ---------- theme card ---------- */
+.cards{display:flex;flex-direction:column;gap:18px;margin-top:10px}
+.card{background:linear-gradient(180deg,var(--ink-2),rgba(19,18,24,.6));border:1px solid var(--line);
+  border-radius:var(--rad);overflow:hidden;box-shadow:var(--shadow);opacity:0;transform:translateY(14px);
+  animation:rise .55s forwards}
+.card .top{padding:18px 18px 14px;position:relative}
+.card .top::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--gold),transparent 70%)}
+.thead{display:flex;align-items:flex-start;gap:13px}
+.emoji{width:46px;height:46px;border-radius:13px;background:var(--gold-dim);border:1px solid rgba(232,180,84,.25);
+  display:grid;place-items:center;font-size:23px;flex:none}
+.thead .tt{flex:1;min-width:0}
+.thead h2{margin:0;font-family:'Archivo';font-weight:700;font-size:16.5px;letter-spacing:.6px;text-transform:uppercase;line-height:1.2}
+.thead .sum{margin:5px 0 0;color:var(--muted);font-size:13.5px;line-height:1.4}
+.conv{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex:none}
+.conv .dots{display:flex;gap:3px}
+.conv .dots i{width:7px;height:14px;border-radius:2px;background:var(--ink-4);display:block}
+.conv .dots i.f{background:linear-gradient(180deg,var(--gold-hi),var(--gold))}
+.conv .lab{font-size:9px;letter-spacing:1.2px;color:var(--muted-2);text-transform:uppercase}
+
+/* edge hero */
+.edge{margin:14px 18px 0;border-radius:14px;padding:13px 14px 14px;position:relative;
+  background:linear-gradient(135deg,rgba(232,180,84,.13),rgba(232,180,84,.04));
+  border:1px solid rgba(232,180,84,.28)}
+.edge .k{font-size:10px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:var(--gold);display:flex;align-items:center;gap:6px}
+.edge .v{margin-top:7px;font-size:14px;font-weight:600;line-height:1.4}
+.edge .th{margin-top:6px;font-size:12.5px;color:var(--muted);line-height:1.45}
+.edge .rep{margin-top:9px;display:inline-flex;align-items:center;gap:7px;font-family:'JetBrains Mono';
+  font-size:11.5px;color:var(--gold-hi);background:rgba(0,0,0,.25);padding:6px 10px;border-radius:8px}
+
+/* repricing lanes */
+.lanes{margin:14px 18px 0;display:grid;grid-template-columns:1fr;gap:7px}
+.lane{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.4}
+.lane .lk{flex:none;font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  padding:3px 7px;border-radius:6px;margin-top:1px;min-width:74px;text-align:center}
+.lane.p .lk{background:var(--ink-4);color:var(--muted-2)}
+.lane.m .lk{background:var(--gold-dim);color:var(--gold)}
+.lane.n .lk{background:var(--short-dim);color:var(--short)}
+.lane .lc{color:var(--muted);flex:1}
+.lane .lc b{color:var(--text);font-weight:600}
+
+/* impacts */
+.impacts{display:flex;flex-wrap:wrap;gap:8px;margin:14px 18px 2px}
+.imp{display:inline-flex;align-items:center;gap:8px;border-radius:11px;padding:8px 11px;cursor:pointer;
+  border:1px solid var(--line);background:var(--ink-3);font-family:'JetBrains Mono';font-size:12.5px;transition:.15s}
+.imp:active{transform:scale(.96)}
+.imp .pair{font-weight:700;letter-spacing:.3px}
+.imp .arr{font-size:13px}
+.imp.long{border-color:rgba(84,194,140,.4);background:var(--long-dim)} .imp.long .arr,.imp.long .pip{color:var(--long)}
+.imp.short{border-color:rgba(232,116,106,.4);background:var(--short-dim)} .imp.short .arr,.imp.short .pip{color:var(--short)}
+.imp .pip{font-weight:700}
+
+/* tradable edge callout */
+.te{margin:14px 18px 4px;padding:12px 14px;border-left:3px solid var(--teal);background:var(--teal-dim);
+  border-radius:0 10px 10px 0;font-size:13px;line-height:1.45}
+.te .k{font-size:9.5px;font-weight:700;letter-spacing:1.3px;text-transform:uppercase;color:var(--teal);display:block;margin-bottom:4px}
+
+/* expander */
+.exp-btn{margin:14px 0 0;width:100%;border:0;border-top:1px solid var(--line);background:transparent;
+  color:var(--muted);font-family:'Archivo';font-weight:600;font-size:12.5px;letter-spacing:.5px;
+  padding:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.exp-btn .chev{transition:.25s;font-size:11px}
+.exp-btn.open .chev{transform:rotate(180deg)}
+.cascade{display:none;padding:0 14px 8px}
+.cascade.open{display:block;animation:fade .3s}
+.crow{border-bottom:1px solid var(--line)}
+.crow:last-child{border-bottom:0}
+.crow .ch{display:flex;align-items:center;gap:11px;padding:13px 4px;cursor:pointer}
+.crow .ci{font-size:16px;width:22px;text-align:center;flex:none}
+.crow .cl{flex:1;font-size:13px;font-weight:600}
+.crow .cl small{display:block;color:var(--muted);font-weight:400;font-size:11.5px;margin-top:2px;line-height:1.35}
+.badge{flex:none;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;padding:3px 7px;border-radius:6px}
+.badge.high{background:var(--long-dim);color:var(--long)}
+.badge.medium{background:var(--gold-dim);color:var(--gold)}
+.badge.low{background:var(--short-dim);color:var(--short)}
+.cbody{display:none;padding:0 4px 14px 37px}
+.cbody.open{display:block}
+.cbody ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}
+.cbody li{position:relative;padding-left:15px;font-size:12.5px;color:var(--muted);line-height:1.4}
+.cbody li::before{content:"";position:absolute;left:0;top:7px;width:5px;height:5px;border-radius:50%;background:var(--gold)}
+.cbody li b{color:var(--text);font-weight:600}
+.cbody .src{margin-top:9px;font-family:'JetBrains Mono';font-size:10.5px;color:var(--muted-2)}
+
+/* setup sheet content */
+.setup{margin-top:6px;background:var(--ink);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.setup .sh{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.setup .sh b{font-family:'JetBrains Mono';font-weight:700;letter-spacing:.5px}
+.setup .rr{font-family:'JetBrains Mono';font-size:12px;color:var(--teal);background:var(--teal-dim);padding:4px 9px;border-radius:7px}
+.setup .cat{padding:9px 14px;background:var(--gold-dim);border-bottom:1px solid var(--line);font-size:11.5px;color:var(--gold-hi);line-height:1.35}
+.setup .sh-right{display:flex;align-items:center;gap:9px}
+.chart-link{font-family:'Archivo';font-size:11.5px;font-weight:600;color:var(--teal);text-decoration:none;border:1px solid rgba(108,198,190,.4);background:var(--teal-dim);padding:5px 9px;border-radius:8px;white-space:nowrap}
+.chart-link:active{opacity:.65}
+.lvl.e2 .tag,.lvl.e2 .px{color:var(--teal)}
+.lvls{display:flex;flex-direction:column}
+.lvl{display:flex;align-items:baseline;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
+.lvl:last-child{border-bottom:0}
+.lvl .tag{font-size:9.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;width:42px;flex:none}
+.lvl .px{font-family:'JetBrains Mono';font-weight:700;font-size:13px;flex:none;width:78px}
+.lvl .lg{color:var(--muted);font-size:11.5px;line-height:1.35}
+.lvl.e .tag{color:var(--text)} .lvl.sl .tag,.lvl.sl .px{color:var(--short)}
+.lvl.t .tag,.lvl.t .px{color:var(--long)}
+
+/* ---------- bottom sheet ---------- */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:50;opacity:0;
+  pointer-events:none;transition:.25s}
+.scrim.show{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:60;background:var(--ink-2);
+  border-radius:22px 22px 0 0;border-top:1px solid var(--line-2);max-width:560px;margin:0 auto;
+  transform:translateY(105%);transition:transform .32s cubic-bezier(.2,.8,.2,1);
+  max-height:90dvh;overflow-y:auto;padding-bottom:calc(24px + var(--safe-b));box-shadow:0 -20px 60px rgba(0,0,0,.6)}
+.sheet.show{transform:translateY(0)}
+.sheet .grab{width:38px;height:4px;background:var(--line-2);border-radius:99px;margin:11px auto 4px}
+.sheet h3{font-family:'Fraunces';font-weight:600;font-size:20px;margin:6px 20px 4px}
+.sheet .sub{color:var(--muted);font-size:12.5px;margin:0 20px 16px}
+.field{margin:0 20px 15px}
+.field label{display:block;font-size:11.5px;font-weight:600;letter-spacing:.4px;color:var(--muted);text-transform:uppercase;margin-bottom:7px}
+.field input,.field select{width:100%;background:var(--ink);border:1px solid var(--line);border-radius:11px;
+  padding:13px 14px;color:var(--text);font-family:'JetBrains Mono';font-size:13px;outline:none;transition:.15s}
+.field input:focus,.field select:focus{border-color:var(--gold)}
+.field .hint{font-size:11px;color:var(--muted-2);margin-top:6px;line-height:1.4;font-family:'Archivo'}
+.field .hint a{color:var(--teal)}
+.row2{display:flex;gap:12px}.row2>div{flex:1}
+.toggle{display:flex;align-items:center;justify-content:space-between;margin:0 20px 15px;
+  padding:13px 14px;background:var(--ink);border:1px solid var(--line);border-radius:11px}
+.toggle .tl{font-size:13px}.toggle .tl small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.sw{width:46px;height:27px;border-radius:99px;background:var(--ink-4);position:relative;cursor:pointer;transition:.2s;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:21px;height:21px;border-radius:50%;background:#fff;transition:.2s}
+.sw.on{background:var(--gold)}.sw.on::after{left:22px}
+.save{margin:6px 20px 10px;width:calc(100% - 40px);border:0;border-radius:13px;padding:15px;cursor:pointer;
+  font-family:'Archivo';font-weight:700;font-size:14.5px;color:#1a1408;background:linear-gradient(135deg,var(--gold-hi),var(--gold))}
+.danger{margin:0 20px;width:calc(100% - 40px);border:1px solid var(--short);background:transparent;color:var(--short);
+  border-radius:13px;padding:12px;cursor:pointer;font-family:'Archivo';font-weight:600;font-size:13px}
+.note{margin:14px 20px 0;padding:12px 14px;background:var(--short-dim);border:1px solid rgba(232,116,106,.3);
+  border-radius:11px;font-size:11.5px;color:#f0b3ad;line-height:1.45}
+
+/* history list */
+.hitem{display:flex;align-items:center;gap:12px;margin:0 20px 9px;padding:13px 14px;background:var(--ink);
+  border:1px solid var(--line);border-radius:12px;cursor:pointer}
+.hitem .hd{flex:1}.hitem .hd b{font-size:13px}.hitem .hd small{display:block;color:var(--muted);font-size:11px;margin-top:2px}
+.hitem .hc{font-size:11px;color:var(--gold);font-family:'JetBrains Mono'}
+.empty{text-align:center;color:var(--muted-2);font-size:13px;padding:30px 20px}
+
+/* misc */
+.demo-pill{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
+  color:var(--gold);background:var(--gold-dim);padding:4px 9px;border-radius:99px;margin:10px 2px 0}
+.errbox{margin:16px 0;padding:14px;border:1px solid rgba(232,116,106,.4);background:var(--short-dim);
+  border-radius:12px;font-size:13px;color:#f0b3ad;line-height:1.45}
+.toast{position:fixed;left:50%;bottom:calc(26px + var(--safe-b));transform:translateX(-50%) translateY(20px);
+  background:var(--ink-4);border:1px solid var(--line-2);color:var(--text);padding:12px 18px;border-radius:12px;
+  font-size:13px;z-index:90;opacity:0;transition:.25s;pointer-events:none;max-width:90%;box-shadow:var(--shadow)}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.footer{text-align:center;color:var(--muted-2);font-size:10.5px;letter-spacing:1px;margin-top:26px;text-transform:uppercase}
+
+@keyframes rise{to{opacity:1;transform:translateY(0)}}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="bar">
+      <div class="logo">
+        <img src="icons/icon-192.png" alt="Apex"/>
+        <div class="t"><b>Apex Forex</b><span>Brief Macro</span></div>
+      </div>
+      <button class="icon-btn" id="histBtn" title="Historique">⌗</button>
+      <button class="icon-btn" id="setBtn" title="Réglages">⚙</button>
+    </div>
+    <div class="meta-row">
+      <span class="date-chip" id="dateChip">—</span>
+      <span class="sentiment" id="sentiment" style="display:none"></span>
+    </div>
+    <div class="controls">
+      <div class="seg" id="seg">
+        <button data-s="Asie">🌏 Asie</button>
+        <button data-s="Londres" class="active">🇬🇧 Londres</button>
+        <button data-s="New York">🇺🇸 New York</button>
+      </div>
+      <button class="gen" id="genBtn"><span class="dot"></span> Générer le brief</button>
+    </div>
+  </header>
+
+  <div id="headline"></div>
+
+  <div class="progress" id="progress">
+    <div class="pstep" data-step="0"><span class="s"></span> Récupération des données marché (FMP)</div>
+    <div class="pstep" data-step="1"><span class="s"></span> Niveaux techniques + RSI (daily & H4)</div>
+    <div class="pstep" data-step="2"><span class="s"></span> Synthèse multi-framework (Claude + web)</div>
+    <div class="pstep" data-step="3"><span class="s"></span> Assemblage du brief</div>
+  </div>
+
+  <div id="err"></div>
+  <div class="cards" id="cards"></div>
+  <div class="footer">Apex FX · cascade 8 points · chaîne de repricing</div>
+</div>
+
+<!-- SETTINGS SHEET -->
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="setSheet">
+  <div class="grab"></div>
+  <h3>Réglages</h3>
+  <p class="sub">Tes clés restent sur ton appareil (localStorage). Rien n'est envoyé ailleurs que vers les API.</p>
+
+  <div class="field">
+    <label>Clé API Anthropic</label>
+    <input type="password" id="inAnth" placeholder="sk-ant-..." autocomplete="off"/>
+    <div class="hint">Pattern « bring your own key » via accès navigateur direct.</div>
+  </div>
+  <div class="field">
+    <label>Clé API FMP (premium)</label>
+    <input type="password" id="inFmp" placeholder="ta clé FMP" autocomplete="off"/>
+    <div class="hint">Quotes, bougies daily, calendrier éco, treasury.</div>
+  </div>
+  <div class="row2">
+    <div class="field">
+      <label>Modèle</label>
+      <select id="inModel">
+        <option value="claude-sonnet-4-6">Sonnet 4.6 (équilibré)</option>
+        <option value="claude-opus-4-8">Opus 4.8 (max qualité)</option>
+        <option value="claude-haiku-4-5-20251001">Haiku 4.5 (rapide)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Max tokens</label>
+      <input type="text" id="inTokens" inputmode="numeric" placeholder="20000"/>
+    </div>
+  </div>
+  <div class="field">
+    <label>Paires suivies (technique)</label>
+    <input type="text" id="inPairs" placeholder="EURUSD,GBPUSD,USDJPY,..."/>
+    <div class="hint">Niveaux PDH/PDL, ATR, Fibo calculés pour ces paires.</div>
+  </div>
+
+  <div class="toggle">
+    <div class="tl">Recherche web <small>Vérifie dates & géopolitique en temps réel</small></div>
+    <div class="sw on" id="swWeb"></div>
+  </div>
+  <div class="toggle">
+    <div class="tl">Proxy CORS pour FMP <small>À activer seulement si FMP bloque (erreur réseau)</small></div>
+    <div class="sw" id="swProxy"></div>
+  </div>
+
+  <div class="note">⚠️ Une clé API dans une app statique est lisible par toute personne ayant accès à l'appareil/au site. OK pour un usage perso ; pour un site public, passe par un petit proxy serveur.</div>
+
+  <button class="save" id="saveSet">Enregistrer</button>
+  <button class="danger" id="testConn" style="border-color:var(--teal);color:var(--teal)">Tester les connexions</button>
+  <div id="testOut" style="margin:10px 20px 0;font-family:'JetBrains Mono';font-size:11.5px;line-height:1.6"></div>
+  <button class="danger" id="clearData">Effacer toutes les données locales</button>
+</div>
+
+<!-- HISTORY SHEET -->
+<div class="sheet" id="histSheet">
+  <div class="grab"></div>
+  <h3>Historique</h3>
+  <p class="sub">Tes briefs générés, conservés localement.</p>
+  <div id="histList"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   APEX FOREX — PWA brief macro multi-framework
+   Vanilla JS, zéro dépendance, déployable sur GitHub Pages.
+   ============================================================ */
+
+/* ---------- storage (try/catch : marche aussi hors-PWA) ---------- */
+const LS = {
+  get(k,d){ try{ const v=localStorage.getItem(k); return v===null?d:JSON.parse(v); }catch(e){ return d; } },
+  set(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+const KEY='apexfx_settings', HKEY='apexfx_history';
+
+const DEFAULTS = {
+  anth:'', fmp:'', model:'claude-sonnet-4-6', tokens:20000,
+  pairs:'EURUSD,GBPUSD,USDJPY,USDCHF,AUDUSD,USDCAD,XAUUSD',
+  web:true, proxy:false
+};
+let S = Object.assign({}, DEFAULTS, LS.get(KEY,{}));
+let currentSession = 'Londres';
+let activeBrief = null;
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const el = (h)=>{ const t=document.createElement('template'); t.innerHTML=h.trim(); return t.content.firstChild; };
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(msg){ const t=$('#toast'); t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3200); }
+function fmtDate(d){ return d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}); }
+
+/* ---------- FMP data layer (best-effort, ne casse jamais) ---------- */
+function fmpUrl(path){
+  const base = 'https://financialmodelingprep.com' + path + (path.includes('?')?'&':'?') + 'apikey=' + encodeURIComponent(S.fmp);
+  return S.proxy ? ('https://corsproxy.io/?url=' + encodeURIComponent(base)) : base;
+}
+async function fmpGet(path){
+  try{
+    const r = await fetch(fmpUrl(path));
+    if(!r.ok) return null;
+    const j = await r.json();
+    if(j && j['Error Message']) return null;
+    return j;
+  }catch(e){ return null; }
+}
+async function getQuotes(pairs){
+  // /stable/quote?symbol=X par paire (fiable), repli legacy batch
+  let quotes = (await Promise.all(pairs.map(async p=>{
+    const j = await fmpGet('/stable/quote?symbol=' + encodeURIComponent(p));
+    return (Array.isArray(j) && j[0]) ? j[0] : null;
+  }))).filter(Boolean);
+  if(!quotes.length){
+    const j = await fmpGet('/api/v3/quote/' + pairs.join(','));
+    if(Array.isArray(j)) quotes = j;
   }
-  // App shell : cache-first, fallback réseau
-  e.respondWith(
-    caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
-      if (e.request.method === 'GET' && res.ok && url.origin === location.origin) {
-        const copy = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, copy));
-      }
-      return res;
-    }).catch(() => caches.match('./index.html')))
+  // normalise changePercentage (stable) / changesPercentage (legacy)
+  return quotes.map(q=>({ ...q, changesPercentage: (q.changesPercentage!=null ? q.changesPercentage : q.changePercentage) }));
+}
+async function getDaily(pair){
+  const from = new Date(Date.now()-100*864e5).toISOString().slice(0,10); // ~100j pour limiter le payload
+  let j = await fmpGet('/stable/historical-price-eod/full?symbol=' + encodeURIComponent(pair) + '&from=' + from);
+  let arr = Array.isArray(j) ? j : (j && Array.isArray(j.historical) ? j.historical : null);
+  if(!arr){
+    const j2 = await fmpGet('/api/v3/historical-price-full/' + pair + '?timeseries=40');
+    arr = (j2 && Array.isArray(j2.historical)) ? j2.historical : null;
+  }
+  if(arr) arr = arr.slice().sort((a,b)=> new Date(b.date) - new Date(a.date)).slice(0,40); // desc, ~40 bougies
+  return arr;
+}
+async function getIntraday(pair, interval){
+  let j = await fmpGet('/stable/historical-chart/' + interval + '?symbol=' + encodeURIComponent(pair));
+  let arr = Array.isArray(j) ? j : null;
+  if(!arr){
+    const j2 = await fmpGet('/api/v3/historical-chart/' + interval + '/' + pair);
+    arr = Array.isArray(j2) ? j2 : null;
+  }
+  if(!arr || !arr.length) return null;
+  return arr.slice().sort((a,b)=> new Date(b.date) - new Date(a.date)); // force desc
+}
+async function getCalendar(from,to){
+  let j = await fmpGet('/stable/economic-calendar?from='+from+'&to='+to);
+  if(Array.isArray(j)) return j;
+  const j2 = await fmpGet('/api/v3/economic_calendar?from='+from+'&to='+to);
+  return Array.isArray(j2) ? j2 : [];
+}
+async function getTreasury(from,to){
+  let j = await fmpGet('/stable/treasury-rates?from='+from+'&to='+to);
+  if(Array.isArray(j)) return j;
+  const j2 = await fmpGet('/api/v4/treasury?from='+from+'&to='+to);
+  return Array.isArray(j2) ? j2 : [];
+}
+
+/* ---------- calcul niveaux techniques ---------- */
+function decimals(pair){ return pair.includes('JPY')?3 : (pair.startsWith('XAU')?2:5); }
+function pipSize(pair){ return pair.includes('JPY')?0.01 : (pair.startsWith('XAU')?0.1:0.0001); }
+// RSI(14) de Wilder. closesChrono = clôtures dans l'ordre ancien -> récent
+function rsi(closesChrono, period){
+  period = period||14;
+  if(!closesChrono || closesChrono.length < period+1) return null;
+  let g=0,l=0;
+  for(let i=1;i<=period;i++){ const d=closesChrono[i]-closesChrono[i-1]; if(d>=0)g+=d; else l-=d; }
+  let ag=g/period, al=l/period;
+  for(let i=period+1;i<closesChrono.length;i++){
+    const d=closesChrono[i]-closesChrono[i-1];
+    ag=(ag*(period-1)+(d>0?d:0))/period;
+    al=(al*(period-1)+(d<0?-d:0))/period;
+  }
+  if(al===0) return 100;
+  return +(100-100/(1+ag/al)).toFixed(1);
+}
+function computeTech(pair, c){
+  if(!c || c.length<16) return null;
+  const d = decimals(pair);
+  const cur = c[0], prev = c[1];                 // jour courant / veille
+  const w = c.slice(1,6), m = c.slice(1,23);     // ~semaine / ~mois (hors courant)
+  const hi = a => Math.max(...a.map(x=>x.high));
+  const lo = a => Math.min(...a.map(x=>x.low));
+  // ATR(14)
+  let trs=[];
+  for(let i=0;i<14;i++){ const a=c[i],b=c[i+1]; if(!b)break;
+    trs.push(Math.max(a.high-a.low, Math.abs(a.high-b.close), Math.abs(a.low-b.close))); }
+  const atr = trs.reduce((x,y)=>x+y,0)/trs.length;
+  // Fibo swing mensuel
+  const mh=hi(m), ml=lo(m), rng=mh-ml;
+  const fib = p => +(mh - rng*p).toFixed(d);
+  const r = v => +Number(v).toFixed(d);
+  const closesD = c.map(x=>x.close).reverse();   // ancien -> récent pour RSI
+  return {
+    pair, decimals:d, last:r(cur.close), pip:pipSize(pair),
+    pdh:r(prev.high), pdl:r(prev.low),
+    wkH:r(hi(w)), wkL:r(lo(w)),
+    moH:r(mh), moL:r(ml),
+    atr:r(atr), atrPips:Math.round(atr/pipSize(pair)),
+    fib382:fib(.382), fib50:fib(.5), fib618:fib(.618),
+    rsiD: rsi(closesD,14)
+  };
+}
+// intraday H4 : RSI + plus haut/bas récents (24h & 48h) + ATR intraday pour entrées/SL/TP intraday
+function computeIntra(pair, c){
+  if(!c || c.length<16) return null;
+  const d = decimals(pair); const r=v=>+Number(v).toFixed(d);
+  const recent = c.slice(0,6);   // ~24h (6 bougies H4)
+  const rec2   = c.slice(0,12);  // ~48h
+  const closes = c.map(x=>x.close).reverse();
+  // ATR(14) sur bougies H4 = amplitude intraday typique (pour dimensionner SL/TP intraday)
+  let trs=[];
+  for(let i=0;i<14;i++){ const a=c[i],b=c[i+1]; if(!b)break;
+    trs.push(Math.max(a.high-a.low, Math.abs(a.high-b.close), Math.abs(a.low-b.close))); }
+  const atrH4 = trs.length ? trs.reduce((x,y)=>x+y,0)/trs.length : 0;
+  const lastRange = c[0] ? (c[0].high - c[0].low) : 0;
+  return {
+    rsiH4: rsi(closes,14),
+    h4H: r(Math.max(...recent.map(x=>x.high))),
+    h4L: r(Math.min(...recent.map(x=>x.low))),
+    h4H48: r(Math.max(...rec2.map(x=>x.high))),
+    h4L48: r(Math.min(...rec2.map(x=>x.low))),
+    atrH4: r(atrH4), atrH4Pips: Math.round(atrH4/pipSize(pair)),
+    lastH4RangePips: Math.round(lastRange/pipSize(pair))
+  };
+}
+
+/* ---------- prompt système ---------- */
+const SYS = [
+"Tu es Apex FX, desk macro institutionnel. Tu produis un brief de trading FX rigoureux et SANS hallucination.",
+"Tu raisonnes en CHAÎNE DE REPRICING : pas de prédiction de prix magique, mais identifier où l'opinion du marché devra se réviser.",
+"",
+"Tu produis EXACTEMENT 3 thèmes macro. Pour chaque thème, une cascade d'analyse en 8 points dans cet ordre :",
+"1 macro_economic (croissance/jobs/conso) · 2 monetary_policy (banques centrales) · 3 economic_data (CPI/PMI/NFP) ·",
+"4 fiscal_policy (déficit/budget) · 5 intermarket (SPX/Or/Brent/US10Y/DXY) · 6 geopolitics · 7 technical · 8 supply_demand.",
+"",
+"RÈGLES DATES (anti-hallucination) : chaque catalyseur a une date AAAA-MM-JJ vérifiée. Ne JAMAIS présenter comme 'à venir/ce soir' un événement DÉJÀ PASSÉ par rapport à la date du jour fournie. Si incertain : date 'à vérifier'. Utilise la recherche web pour vérifier dates, géopolitique et news fraîches.",
+"",
+"RÈGLE HORIZON & PROXIMITÉ (INTRADAY ADAPTATIF) : chaque setup choisit son horizon selon la structure la plus propre — \"horizon\":\"scalp\" (lecture M15, sortie en minutes à 1-2h) ou \"horizon\":\"day\" (lecture H1, sortie dans la journée). Les entrées doivent être PROCHES du prix 'last'. Si l'entrée la plus propre est à plus d'environ 1,5× l'ATR_H4 (fourni, en pips) du prix actuel, ne la propose PAS comme actionnable : mets \"status\":\"attente\" et décris le déclencheur/niveau à surveiller dans 'no_fill_rule'. Sinon \"status\":\"actionnable\". Vise des trades du jour, pas du swing.",
+"RÈGLES TP/SL INTRADAY (ancrage structure, distances NON fixes) : SL = derrière l'invalidation de structure intraday la plus proche (swing M15/H1, borne H4 24-48h, order block) — la distance en pips est CELLE QUE DONNE LA STRUCTURE du moment, jamais un nombre arbitraire. TP1 = première liquidité intraday opposée (borne H4, PDH/PDL, plus haut/bas de session) ≈ 1 à 1,5R. TP2 = liquidité intraday suivante ≈ 2 à 3R, PLAFONNÉ par ~2-3× ATR_H4 (PAS l'ATR daily). R:R ≥ 1:1.5 sur TP1, sinon \"status\":\"attente\". Niveaux en PRIX absolus cohérents avec 'last'.",
+"RÈGLES D'ENTRÉE (anti-trade-raté) : fournis TOUJOURS DEUX entrées. 'entry_market' = agressive, sur cassure/clôture M15-H1 d'un niveau intraday dans le sens du trade (pour ne pas rater un mouvement one-way sur news). 'entry_limit' = repli sur OB/borne intraday (meilleur prix, risque de non-remplissage). 'no_fill_rule' = quoi faire si le repli n'arrive pas (ex : entrer sur cassure de tel niveau après N bougies M15/H1). Si un catalyseur fort est imminent (NFP, CPI, banque centrale), renseigne 'catalyst' daté et privilégie l'entrée agressive. SL et TP s'appliquent aux deux entrées.",
+"DONNÉES INTRADAY À UTILISER : RSI_H4 pour le momentum intraday (point 7) ; bornes H4 24h/48h + PDH/PDL + plus haut/bas de session = liquidité/niveaux de cassure intraday ; ATR_H4 (pips) pour dimensionner SL/TP intraday. RSI_D et niveaux weekly/monthly = CONTEXTE directionnel seulement, pas pour les cibles. Si 'CHIFFRES DÉJÀ PUBLIÉS (48h)' est fourni, intègre-les AU PASSÉ dans 'economic_data' sans inventer de valeurs.",
+"",
+"confidence par data point : 'high' (source vérifiée), 'medium' (déduction logique), 'low' (hypothèse).",
+"conviction du thème : entier 1 à 5 (5 = convergence de 4+ frameworks).",
+"Tout le TEXTE est en FRANÇAIS, concis, niveau desk pro.",
+"",
+"FORMAT DE SORTIE STRICT : ta sortie écrite est UNIQUEMENT du JSON valide. Commence DIRECTEMENT par { et finis par }. Aucun texte avant/après, aucun markdown, aucun backtick. Tu peux utiliser la recherche web (action) mais le rendu final est le JSON seul.",
+"",
+"SCHÉMA :",
+'{',
+'  "session":"Londres","headline":"1 phrase de synthèse du jour","risk_sentiment":"risk-on|risk-off|mixed",',
+'  "themes":[{',
+'    "icon":"🏛","title":"TITRE COURT EN CAPS","summary":"1 phrase","conviction":4,',
+'    "cascade_analysis":{',
+'      "macro_economic":{"summary":"...","facts":["fait (source)","..."],"source":"FRED+BLS","confidence":"high"},',
+'      "monetary_policy":{...},"economic_data":{...},"fiscal_policy":{...},',
+'      "intermarket":{...},"geopolitics":{...},"technical":{...},"supply_demand":{...}',
+'    },',
+'    "what_market_believes":{',
+'      "already_priced":[{"item":"...","confidence":"high"}],',
+'      "mispriced":[{"item":"...","thesis":"...","expected_repricing":"...","confidence":"medium"}],',
+'      "not_yet_priced":[{"item":"...","trigger":"...","confidence":"low"}]',
+'    },',
+'    "tradable_edge":"où est l opportunité concrètement",',
+'    "impacts":[{"pair":"EUR/USD","direction":"short","why":"...",',
+'      "setup":{"horizon":"day","status":"actionnable","entry_market":1.0845,"entry_limit":1.0868,"sl":1.0905,"tp1":1.0795,"tp2":1.074,',
+'      "entry_market_logic":"cassure/clôture H1 sous borne intraday","entry_limit_logic":"repli sur OB intraday",',
+'      "no_fill_rule":"si pas de repli sous 3 bougies H1, vendre la cassure de 1.0820",',
+'      "catalyst":"NFP US (AAAA-MM-JJ)","sl_logic":"derrière swing H1 (invalidation)","tp1_logic":"borne H4 / liquidité intraday","tp2_logic":"plafonné ~2-3x ATR_H4","rr":"1:1.8"}}]',
+'  }]',
+'}'
+].join("\n");
+
+/* ---------- contexte marché formaté pour le prompt ---------- */
+function buildMarketText(techs, quotes, cal, actuals, tre, today){
+  let t = "DATE DU JOUR : "+today+"\nSESSION : "+currentSession+"\n\n";
+  t += "=== NIVEAUX TECHNIQUES (calculés FMP : daily + H4) ===\n";
+  if(techs.length){
+    techs.forEach(x=>{ t +=
+      x.pair+" last="+x.last+
+      " | PDH="+x.pdh+" PDL="+x.pdl+" | wkH="+x.wkH+" wkL="+x.wkL+" | moH="+x.moH+" moL="+x.moL+
+      " | ATR14="+x.atr+" ("+x.atrPips+"pips)"+
+      " | Fibo 38.2="+x.fib382+" 50="+x.fib50+" 61.8="+x.fib618+
+      (x.rsiD!=null?" | RSI_D="+x.rsiD:"")+(x.rsiH4!=null?" RSI_H4="+x.rsiH4:"")+
+      (x.h4H!=null?" | H4 24h["+x.h4L+"/"+x.h4H+"] 48h["+x.h4L48+"/"+x.h4H48+"]":"")+
+      (x.atrH4Pips!=null?" | ATR_H4="+x.atrH4Pips+"pips (amplitude intraday)":"")+
+      "\n"; });
+    t += "(RSI<30 survendu, >70 suracheté ; bornes H4 [bas/haut] = liquidité intraday ; ATR_H4 = pour dimensionner SL/TP intraday ; ATR14 = contexte daily)\n";
+  } else { t += "(indisponible — utilise la recherche web pour les niveaux ; signale confidence faible)\n"; }
+  if(quotes.length){
+    t += "\n=== QUOTES ===\n";
+    quotes.forEach(q=>{ if(q&&q.symbol){ const ch=Number(q.changesPercentage||0); t += q.symbol+" "+q.price+" ("+(ch>=0?'+':'')+ch.toFixed(2)+"%)\n"; } });
+  }
+  const MAJ=['USD','EUR','GBP','JPY','CHF','CAD','AUD','NZD','CNY'];
+  if(actuals && actuals.length){
+    const done = actuals.filter(e=>MAJ.includes(e.currency) && e.actual!=null && e.actual!=='');
+    if(done.length){
+      t += "\n=== CHIFFRES DÉJÀ PUBLIÉS (48h — actual vs prévu) ===\n";
+      done.slice(-24).forEach(e=>{ t += (e.date||'').slice(0,16)+" "+e.currency+" "+(e.event||'')+
+        " : actual "+e.actual+(e.estimate!=null?" vs est "+e.estimate:"")+(e.previous!=null?" (préc "+e.previous+")":"")+"\n"; });
+      t += "(ces chiffres sont SORTIS — à traiter au passé)\n";
+    }
+  }
+  if(cal && cal.length){
+    t += "\n=== CALENDRIER À VENIR (7j, devises majeures) ===\n";
+    cal.filter(e=>MAJ.includes(e.currency) && (e.actual==null||e.actual==='') && (!e.impact || ['High','Medium','high','medium'].includes(e.impact)))
+       .slice(0,24).forEach(e=>{ t += (e.date||'').slice(0,16)+" "+e.currency+" "+(e.event||'')+(e.estimate!=null?" (est "+e.estimate+")":"")+"\n"; });
+  }
+  if(tre && tre.length){
+    const last=tre[tre.length-1]||tre[0];
+    if(last) t += "\n=== TREASURY ("+last.date+") === 2Y="+last.year2+" 10Y="+last.year10+" 30Y="+last.year30+"\n";
+  }
+  return t;
+}
+
+/* ---------- appel Claude (gère web_search + pause_turn) ---------- */
+async function callClaude(marketText, today){
+  const tools = S.web ? [{type:'web_search_20250305', name:'web_search', max_uses:5}] : undefined;
+  const userMsg = "Génère le brief Apex FX pour la session "+currentSession+" du "+today+
+    ". Utilise STRICTEMENT les niveaux techniques fournis pour les setups. Données :\n\n"+marketText;
+  const body = { model:S.model, max_tokens:parseInt(S.tokens)||20000, system:SYS, stream:true,
+                 messages:[{role:'user', content:userMsg}] };
+  if(tools) body.tools = tools;
+
+  const r = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':S.anth,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){
+    let msg='Erreur API '+r.status; try{ const j=await r.json(); if(j&&j.error) msg=j.error.message; }catch(e){}
+    throw new Error(msg);
+  }
+
+  // lecture du flux SSE : on accumule les text_delta (réponse incrémentale = pas de timeout)
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf='', text='', apiErr=null;
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let nl;
+    while((nl = buf.indexOf('\n')) >= 0){
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl+1);
+      if(!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if(payload==='[DONE]') continue;
+      let ev; try{ ev = JSON.parse(payload); }catch(e){ continue; }
+      if(ev.type==='content_block_delta' && ev.delta){
+        if(ev.delta.type==='text_delta' && ev.delta.text) text += ev.delta.text;
+      } else if(ev.type==='error'){ apiErr = (ev.error&&ev.error.message)||'erreur de flux'; }
+    }
+  }
+  if(apiErr) throw new Error(apiErr);
+
+  text = text.trim();
+  const a=text.indexOf('{'), b=text.lastIndexOf('}');
+  if(a<0||b<0) throw new Error("Réponse non-JSON reçue du modèle.");
+  let parsed;
+  try{ parsed = JSON.parse(text.slice(a,b+1)); }
+  catch(e){ throw new Error("JSON invalide : "+e.message); }
+  if(!parsed.themes || !parsed.themes.length) throw new Error("Aucun thème dans la réponse.");
+  return parsed;
+}
+
+/* ---------- orchestration ---------- */
+let _wakeLock=null;
+async function acquireWake(){ try{ if('wakeLock' in navigator){ _wakeLock=await navigator.wakeLock.request('screen'); } }catch(e){} }
+async function releaseWake(){ try{ if(_wakeLock){ await _wakeLock.release(); } }catch(e){} _wakeLock=null; }
+// si l'écran a été masqué puis revient pendant une génération, on reprend le verrou
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && $('#genBtn') && $('#genBtn').disabled){ acquireWake(); } });
+function setStep(n, state){ const s=document.querySelector('.pstep[data-step="'+n+'"]'); if(s){s.className='pstep '+state;} }
+async function generate(){
+  if(!S.anth){ openSheet('#setSheet'); toast("Ajoute ta clé Anthropic d'abord"); return; }
+  $('#err').innerHTML=''; $('#cards').innerHTML=''; $('#headline').innerHTML='';
+  $('#sentiment').style.display='none';
+  $('#genBtn').disabled=true;
+  acquireWake(); // garde l'écran allumé pendant la génération (évite la coupure réseau en veille)
+  const prog=$('#progress'); prog.classList.add('show');
+  ['0','1','2','3'].forEach(n=>setStep(n,''));
+  const today = new Date().toISOString().slice(0,10);
+  const to = new Date(Date.now()+7*864e5).toISOString().slice(0,10);
+  const from48 = new Date(Date.now()-2*864e5).toISOString().slice(0,10);
+
+  try{
+    // 1 — données FMP (best-effort) : quotes, calendrier à venir, chiffres publiés 48h, treasury
+    setStep(0,'active');
+    const pairs = S.pairs.split(',').map(x=>x.trim().toUpperCase()).filter(Boolean);
+    let quotes=[], cal=[], actuals=[], tre=[];
+    if(S.fmp){
+      [quotes, cal, actuals, tre] = await Promise.all([
+        getQuotes(pairs), getCalendar(today,to), getCalendar(from48,today), getTreasury(from48,today)
+      ]);
+    }
+    setStep(0,'done');
+
+    // 2 — niveaux techniques : daily + intraday H4 (RSI, swings de cassure)
+    setStep(1,'active');
+    const techs=[];
+    if(S.fmp){
+      const [dailies, h4s] = await Promise.all([
+        Promise.all(pairs.map(p=>getDaily(p))),
+        Promise.all(pairs.map(p=>getIntraday(p,'4hour')))
+      ]);
+      pairs.forEach((p,i)=>{
+        const t=computeTech(p,dailies[i]); if(!t) return;
+        const intra=computeIntra(p,h4s[i]); if(intra) Object.assign(t,intra);
+        techs.push(t);
+      });
+    }
+    setStep(1,'done');
+
+    // 3 — synthèse Claude
+    setStep(2,'active');
+    const marketText = buildMarketText(techs, quotes, cal, actuals, tre, today);
+    const brief = await callClaude(marketText, today);
+    setStep(2,'done');
+
+    // 4 — assemblage
+    setStep(3,'active');
+    brief.session = currentSession;
+    brief.generated_at = new Date().toISOString();
+    brief.demo = false;
+    saveBrief(brief);
+    setStep(3,'done');
+    setTimeout(()=>{ prog.classList.remove('show'); renderBrief(brief); }, 350);
+  }catch(e){
+    prog.classList.remove('show');
+    $('#err').innerHTML = '<div class="errbox"><b>Échec de la génération.</b><br>'+esc(e.message)+
+      '<br><br>Vérifie tes clés dans ⚙. Si l\'appel FMP échoue (réseau/CORS), active le proxy CORS. Le brief reste possible avec la recherche web seule.</div>';
+  }finally{
+    $('#genBtn').disabled=false;
+    releaseWake(); // relâche l'écran : il peut se remettre en veille normalement
+  }
+}
+
+/* ---------- rendu ---------- */
+const CASCADE_META = [
+  ['macro_economic','🌍','Macro éco'],['monetary_policy','🏛','Politique monétaire'],
+  ['economic_data','📊','Données économiques'],['fiscal_policy','💼','Politique fiscale'],
+  ['intermarket','🔗','Interconnexion marchés'],['geopolitics','⚔️','Géopolitique'],
+  ['technical','📈','Analyse technique'],['supply_demand','⚖️','Offre / Demande']
+];
+function convDots(n){ n=Math.max(0,Math.min(5,n||0)); let h=''; for(let i=0;i<5;i++) h+='<i class="'+(i<n?'f':'')+'"></i>'; return h; }
+function dir(d){ return (d||'').toLowerCase()==='long'?'long':'short'; }
+function arrow(d){ return dir(d)==='long'?'▲':'▼'; }
+
+function laneItem(o, type){
+  const main = esc(o.item||'');
+  let extra='';
+  if(type==='m'){ extra = (o.thesis?' — '+esc(o.thesis):'') + (o.expected_repricing?' <b>→ '+esc(o.expected_repricing)+'</b>':''); }
+  if(type==='n'){ extra = o.trigger?' <b>(trigger : '+esc(o.trigger)+')</b>':''; }
+  return '<b>'+main+'</b>'+extra;
+}
+
+function themeCard(t, idx){
+  const mis = (t.what_market_believes?.mispriced||[])[0];
+  const priced = t.what_market_believes?.already_priced||[];
+  const notyet = t.what_market_believes?.not_yet_priced||[];
+
+  let edge='';
+  if(mis){
+    edge = '<div class="edge"><div class="k">◆ Ce que le marché a mal pricé</div>'+
+      '<div class="v">'+esc(mis.item)+'</div>'+
+      (mis.thesis?'<div class="th">'+esc(mis.thesis)+'</div>':'')+
+      (mis.expected_repricing?'<div class="rep">↻ '+esc(mis.expected_repricing)+'</div>':'')+'</div>';
+  }
+
+  // lanes (autres items)
+  let lanes='<div class="lanes">';
+  (priced.slice(0,2)).forEach(o=>lanes+='<div class="lane p"><span class="lk">Déjà pricé</span><span class="lc">'+laneItem(o,'p')+'</span></div>');
+  (t.what_market_believes?.mispriced||[]).slice(1,2).forEach(o=>lanes+='<div class="lane m"><span class="lk">Mal pricé</span><span class="lc">'+laneItem(o,'m')+'</span></div>');
+  (notyet.slice(0,2)).forEach(o=>lanes+='<div class="lane n"><span class="lk">Pas pricé</span><span class="lc">'+laneItem(o,'n')+'</span></div>');
+  lanes+='</div>';
+
+  // impacts
+  let imps='<div class="impacts">';
+  (t.impacts||[]).forEach((im,k)=>{
+    const d=dir(im.direction);
+    imps+='<div class="imp '+d+'" data-act="setup" data-t="'+idx+'" data-i="'+k+'">'+
+      '<span class="arr">'+arrow(im.direction)+'</span><span class="pair">'+esc(im.pair)+'</span>'+
+      (im.setup&&im.setup.rr?'<span class="pip">'+esc(im.setup.rr)+'</span>':'')+'</div>';
+  });
+  imps+='</div>';
+
+  // cascade
+  let cas='<div class="cascade" data-cascade="'+idx+'">';
+  CASCADE_META.forEach(([key,ic,lab],ci)=>{
+    const c=t.cascade_analysis?.[key]; if(!c) return;
+    const facts=(c.facts||[]).map(f=>'<li>'+esc(f)+'</li>').join('');
+    cas+='<div class="crow">'+
+      '<div class="ch" data-act="crow" data-t="'+idx+'" data-c="'+ci+'">'+
+        '<span class="ci">'+ic+'</span>'+
+        '<span class="cl">'+(ci+1)+'. '+lab+'<small>'+esc(c.summary||'')+'</small></span>'+
+        '<span class="badge '+(c.confidence||'medium')+'">'+(c.confidence||'med')+'</span>'+
+      '</div>'+
+      '<div class="cbody" data-cbody="'+idx+'-'+ci+'"><ul>'+facts+'</ul>'+
+        (c.source?'<div class="src">source : '+esc(c.source)+'</div>':'')+'</div>'+
+    '</div>';
+  });
+  cas+='</div>';
+
+  const card = el(
+    '<div class="card" style="animation-delay:'+(idx*0.12)+'s">'+
+      '<div class="top">'+
+        '<div class="thead">'+
+          '<div class="emoji">'+(t.icon||'📌')+'</div>'+
+          '<div class="tt"><h2>'+esc(t.title||'THÈME')+'</h2><p class="sum">'+esc(t.summary||'')+'</p></div>'+
+          '<div class="conv"><div class="dots">'+convDots(t.conviction)+'</div><span class="lab">Conviction</span></div>'+
+        '</div>'+
+        edge+lanes+imps+
+        (t.tradable_edge?'<div class="te"><span class="k">⊕ Edge exploitable</span>'+esc(t.tradable_edge)+'</div>':'')+
+      '</div>'+
+      '<button class="exp-btn" data-act="exp" data-t="'+idx+'">Voir la cascade 8 points <span class="chev">▾</span></button>'+
+      cas+
+    '</div>'
   );
+  return card;
+}
+
+function renderBrief(brief){
+  activeBrief = brief;
+  const c=$('#cards'); c.innerHTML='';
+  if(brief.demo){ c.appendChild(el('<div class="demo-pill">Démo — ajoute tes clés pour générer en réel</div>')); }
+  if(brief.headline){
+    $('#headline').innerHTML='<div class="headline"><span class="q">“</span>'+esc(brief.headline)+'<span class="q">”</span></div>';
+  }
+  const sm=$('#sentiment'), rs=(brief.risk_sentiment||'').toLowerCase();
+  if(rs){ sm.style.display=''; sm.className='sentiment '+(rs.includes('on')?'on':rs.includes('off')?'off':'mixed');
+    sm.textContent = rs.includes('on')?'Risk-On':rs.includes('off')?'Risk-Off':'Mixte'; }
+  (brief.themes||[]).slice(0,3).forEach((t,i)=>c.appendChild(themeCard(t,i)));
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+/* setup detail (rendu inline sous la carte via toast-sheet simplifié) */
+const FXCODES = new Set(['EUR','USD','GBP','JPY','CHF','CAD','AUD','NZD','XAU','XAG','CNH','CNY','SEK','NOK','MXN','ZAR','TRY','SGD','HKD','PLN']);
+// lien vers le graphique Investing.com (paires FX/métaux), sinon repli recherche Investing
+function investingUrl(pair){
+  const raw=(pair||'').trim();
+  const n=raw.toUpperCase().replace(/[^A-Z]/g,'');
+  if(n.length===6){ const a=n.slice(0,3), b=n.slice(3);
+    if(FXCODES.has(a)&&FXCODES.has(b)) return 'https://www.investing.com/currencies/'+a.toLowerCase()+'-'+b.toLowerCase()+'-chart'; }
+  return 'https://www.investing.com/search/?q='+encodeURIComponent(raw);
+}
+function showSetup(ti,ii){
+  const im = activeBrief.themes[ti].impacts[ii]; if(!im) return;
+  const su=im.setup||{}; const d=dir(im.direction);
+  const lvl=(cls,tag,px,lg)=> px==null?'':'<div class="lvl '+cls+'"><span class="tag">'+tag+'</span><span class="px">'+px+'</span><span class="lg">'+esc(lg||'')+'</span></div>';
+  const note=(tag,txt)=> txt?'<div class="lvl"><span class="tag" style="width:auto;min-width:42px">'+tag+'</span><span class="lg">'+esc(txt)+'</span></div>':'';
+  const hasDual = (su.entry_market!=null || su.entry_limit!=null);
+  const entries = hasDual
+    ? lvl('e','Agress.',su.entry_market,su.entry_market_logic||"Au marché / sur cassure — capte les mouvements d'un trait")
+      + lvl('e2','Limite',su.entry_limit,su.entry_limit_logic||'Sur pullback — meilleur prix, risque de non-remplissage')
+    : lvl('e','Entry',su.entry,su.entry_logic);
+  const cat = su.catalyst?'<div class="cat">⚡ Catalyseur : '+esc(su.catalyst)+' — privilégier l\'entrée agressive (risque one-way)</div>':'';
+  const chart='<a class="chart-link" href="'+investingUrl(im.pair)+'" target="_blank" rel="noopener noreferrer">📈 Graphique ↗</a>';
+  // badges horizon + statut intraday
+  const hz = su.horizon ? '<span class="rr" style="background:rgba(110,180,255,.14);color:#6eb4ff">'+(su.horizon==='scalp'?'⚡ Scalp M15':'📅 Day H1')+'</span>' : '';
+  const isWait = (su.status==='attente');
+  const st = su.status ? '<span class="rr" style="background:'+(isWait?'rgba(230,180,90,.16);color:var(--gold)':'rgba(90,210,150,.14);color:var(--long)')+'">'+(isWait?'⏳ Attente':'✓ Actionnable')+'</span>' : '';
+  const waitBanner = isWait ? '<div class="cat" style="background:rgba(230,180,90,.10);border-color:rgba(230,180,90,.3)">⏳ Entrée trop loin pour de l\'intraday — on surveille le déclencheur, pas d\'entrée immédiate.</div>' : '';
+  const html='<div class="setup">'+cat+waitBanner+'<div class="sh"><b>'+arrow(im.direction)+' '+esc(im.pair)+' · '+(d==='long'?'LONG':'SHORT')+'</b>'+
+    '<span class="sh-right">'+hz+st+(su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+chart+'</span></div><div class="lvls">'+
+    entries+
+    note('Si pas de fill', su.no_fill_rule)+
+    lvl('sl','SL',su.sl,su.sl_logic)+
+    lvl('t','TP1',su.tp1,su.tp1_logic)+
+    lvl('t','TP2',su.tp2,su.tp2_logic)+
+    '</div>'+(im.why?'<div class="lvl"><span class="lg">'+esc(im.why)+'</span></div>':'')+'</div>';
+  // injecte sous la rangée d'impacts du thème concerné
+  const card=$('#cards').children[ (activeBrief.demo?1:0) + ti ];
+  let host=card.querySelector('.setup-host');
+  if(!host){ host=el('<div class="setup-host" style="padding:0 18px 10px"></div>'); card.querySelector('.top').appendChild(host); }
+  host.innerHTML = (host.dataset.cur==String(ii))?'':html;
+  host.dataset.cur = (host.dataset.cur==String(ii))?'':String(ii);
+}
+
+/* ---------- interactions (event delegation) ---------- */
+$('#cards').addEventListener('click', e=>{
+  const a=e.target.closest('[data-act]'); if(!a) return;
+  const act=a.dataset.act, ti=+a.dataset.t;
+  if(act==='exp'){
+    const cas=document.querySelector('.cascade[data-cascade="'+ti+'"]');
+    a.classList.toggle('open'); cas.classList.toggle('open');
+    a.firstChild.textContent = cas.classList.contains('open')?'Masquer la cascade ':'Voir la cascade 8 points ';
+  }
+  if(act==='crow'){
+    const ci=+a.dataset.c, body=document.querySelector('.cbody[data-cbody="'+ti+'-'+ci+'"]');
+    if(body) body.classList.toggle('open');
+  }
+  if(act==='setup'){ showSetup(ti, +a.dataset.i); }
 });
+
+/* ---------- session segmented ---------- */
+function setSessionUI(name){
+  currentSession=name;
+  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('active', x.dataset.s===name));
+}
+$('#seg').addEventListener('click', e=>{
+  const b=e.target.closest('button[data-s]'); if(!b) return;
+  setSessionUI(b.dataset.s);
+});
+
+/* ---------- sheets ---------- */
+function openSheet(sel){ $('#scrim').classList.add('show'); $(sel).classList.add('show'); }
+function closeSheets(){ $('#scrim').classList.remove('show'); $('#setSheet').classList.remove('show'); $('#histSheet').classList.remove('show'); }
+$('#scrim').addEventListener('click', closeSheets);
+$('#setBtn').addEventListener('click', ()=>{ fillSettings(); openSheet('#setSheet'); });
+$('#histBtn').addEventListener('click', ()=>{ renderHistory(); openSheet('#histSheet'); });
+
+/* ---------- settings ---------- */
+function fillSettings(){
+  $('#inAnth').value=S.anth; $('#inFmp').value=S.fmp; $('#inModel').value=S.model;
+  $('#inTokens').value=S.tokens; $('#inPairs').value=S.pairs;
+  $('#swWeb').classList.toggle('on',S.web); $('#swProxy').classList.toggle('on',S.proxy);
+}
+$('#swWeb').addEventListener('click',e=>e.currentTarget.classList.toggle('on'));
+$('#swProxy').addEventListener('click',e=>e.currentTarget.classList.toggle('on'));
+$('#saveSet').addEventListener('click', ()=>{
+  S.anth=$('#inAnth').value.trim(); S.fmp=$('#inFmp').value.trim();
+  S.model=$('#inModel').value; S.tokens=parseInt($('#inTokens').value)||20000;
+  S.pairs=$('#inPairs').value.trim()||DEFAULTS.pairs;
+  S.web=$('#swWeb').classList.contains('on'); S.proxy=$('#swProxy').classList.contains('on');
+  LS.set(KEY,S); closeSheets(); toast('Réglages enregistrés ✓');
+});
+$('#clearData').addEventListener('click', ()=>{
+  if(confirm('Effacer clés, réglages et historique de cet appareil ?')){
+    LS.del(KEY); LS.del(HKEY); S=Object.assign({},DEFAULTS); closeSheets(); location.reload();
+  }
+});
+
+/* ---------- diagnostic connexions ---------- */
+$('#testConn').addEventListener('click', async ()=>{
+  // prend les valeurs actuellement saisies (même non enregistrées)
+  const anth=$('#inAnth').value.trim(), fmp=$('#inFmp').value.trim();
+  const proxy=$('#swProxy').classList.contains('on');
+  const out=$('#testOut'); out.innerHTML='⏳ Test en cours…';
+  const line=(label,ok,msg)=> '<div style="margin-bottom:4px"><b style="color:'+(ok?'var(--long)':'var(--short)')+'">'+(ok?'✓':'✗')+' '+label+'</b> — '+esc(msg)+'</div>';
+  let html='';
+
+  // --- FMP (stable) ---
+  if(!fmp){ html+=line('FMP', false, 'clé vide'); }
+  else{
+    let base='https://financialmodelingprep.com/stable/quote?symbol=EURUSD&apikey='+encodeURIComponent(fmp);
+    if(proxy) base='https://corsproxy.io/?url='+encodeURIComponent(base);
+    try{
+      const r=await fetch(base); let j=null; try{ j=await r.json(); }catch(e){}
+      if(!r.ok) html+=line('FMP', false, 'HTTP '+r.status+(j&&j['Error Message']?' — '+j['Error Message']:''));
+      else if(j&&j['Error Message']) html+=line('FMP', false, j['Error Message']);
+      else if(Array.isArray(j)&&j[0]&&j[0].price) html+=line('FMP', true, 'OK — EURUSD '+j[0].price);
+      else html+=line('FMP', false, 'réponse inattendue');
+    }catch(e){ html+=line('FMP', false, 'réseau/CORS ('+e.message+') → essaie d\'activer le proxy CORS'); }
+  }
+
+  // --- Anthropic ---
+  if(!anth){ html+=line('Anthropic', false, 'clé vide'); }
+  else{
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'content-type':'application/json','x-api-key':anth,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:$('#inModel').value,max_tokens:8,messages:[{role:'user',content:'ping'}]})
+      });
+      let j=null; try{ j=await r.json(); }catch(e){}
+      if(r.ok) html+=line('Anthropic', true, 'OK — '+($('#inModel').value));
+      else html+=line('Anthropic', false, 'HTTP '+r.status+(j&&j.error?' — '+j.error.message:''));
+    }catch(e){ html+=line('Anthropic', false, 'réseau/CORS ('+e.message+')'); }
+  }
+
+  html+='<div style="color:var(--muted-2);margin-top:6px;font-family:Archivo">Un ✗ « réseau/CORS » = blocage navigateur ; un ✗ « HTTP 401/403 » = clé/crédits ; un ✗ « Invalid API KEY » = mauvaise clé FMP.</div>';
+  out.innerHTML=html;
+});
+
+/* ---------- history ---------- */
+function saveBrief(b){
+  let h=LS.get(HKEY,[]); h.unshift({ts:b.generated_at,session:b.session,headline:b.headline,brief:b});
+  const weekAgo=Date.now()-7*864e5;
+  h=h.filter(it=>{ const t=Date.parse(it.ts||0); return isNaN(t)?true:t>=weekAgo; }); // conserve 7 jours
+  LS.set(HKEY, h.slice(0,60));
+}
+function renderHistory(){
+  const h=LS.get(HKEY,[]); const list=$('#histList');
+  if(!h.length){ list.innerHTML='<div class="empty">Aucun brief enregistré.<br>Génère ton premier brief.</div>'; return; }
+  list.innerHTML='';
+  h.forEach((it,i)=>{
+    const d=new Date(it.ts);
+    const conv=(it.brief.themes||[]).reduce((m,t)=>Math.max(m,t.conviction||0),0);
+    const row=el('<div class="hitem" data-h="'+i+'"><div class="hd"><b>'+esc(it.session||'Brief')+'</b>'+
+      '<small>'+d.toLocaleString('fr-FR',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'})+
+      ' · '+esc((it.headline||'').slice(0,46))+'…</small></div><div class="hc">max '+conv+'/5</div></div>');
+    row.addEventListener('click',()=>{ closeSheets(); renderBrief(it.brief); });
+    list.appendChild(row);
+  });
+}
+
+/* ---------- init ---------- */
+$('#genBtn').addEventListener('click', generate);
+$('#dateChip').textContent = fmtDate(new Date());
+
+/* brief de démo (UI belle dès l'ouverture, hors-ligne) */
+const DEMO = {
+  demo:true, session:'Londres', headline:"USD ferme avant le CPI, l'euro teste le support mensuel — le marché sous-estime la patience de la BCE.",
+  risk_sentiment:'risk-off',
+  themes:[
+    { icon:'🏛', title:'FED — PATIENCE SOUS-ESTIMÉE', summary:"Le marché price trop de baisses ; les données restent solides.", conviction:4,
+      cascade_analysis:{
+        macro_economic:{summary:"Marché du travail résilient.",facts:["NFP au-dessus du consensus","Chômage stable bas"],source:"BLS",confidence:"high"},
+        monetary_policy:{summary:"Ton prudent maintenu.",facts:["Pas d'urgence à baisser signalée","Dot plot moins dovish qu'attendu"],source:"Fed",confidence:"high"},
+        economic_data:{summary:"CPI à venir, pivot de séance.",facts:["CPI publié cette semaine (à vérifier)","Services collants"],source:"BLS/FRED",confidence:"medium"},
+        fiscal_policy:{summary:"Déficit élevé soutient les taux longs.",facts:["Émissions Treasury lourdes","Prime de terme en hausse"],source:"Trésor US",confidence:"medium"},
+        intermarket:{summary:"DXY ferme, US10Y tendu.",facts:["US10Y proche des hauts récents","Or sous résistance"],source:"intermarket",confidence:"high"},
+        geopolitics:{summary:"Risque géo en arrière-plan.",facts:["Tensions régionales surveillées"],source:"news",confidence:"low"},
+        technical:{summary:"DXY au-dessus de sa MM.",facts:["Structure haussière intacte","Repli acheté"],source:"déduction",confidence:"medium"},
+        supply_demand:{summary:"Real money long USD.",facts:["Flux refuge favorables au billet vert"],source:"déduction/COT",confidence:"medium"}
+      },
+      what_market_believes:{
+        already_priced:[{item:"Plusieurs baisses de taux d'ici fin d'année",confidence:"high"}],
+        mispriced:[{item:"La Fed pourrait rester en pause plus longtemps",thesis:"Données emploi + inflation services collante",expected_repricing:"USD se renforce si la pause est confirmée",confidence:"medium"}],
+        not_yet_priced:[{item:"Surprise haussière du CPI",trigger:"Core CPI > consensus",confidence:"low"}]
+      },
+      tradable_edge:"Acheter les replis du dollar tant que les données restent fermes, en attendant le CPI comme catalyseur.",
+      impacts:[{pair:'EUR/USD',direction:'short',why:"Divergence de politique en faveur du USD",
+        setup:{entry_market:1.0845,entry_limit:1.0868,sl:1.0905,tp1:1.0795,tp2:1.0740,entry_market_logic:"Au marché / sur cassure du plus bas intraday",entry_limit_logic:"Repli sur le pivot 1.0868",no_fill_rule:"Pas de pullback vers 1.0868 sous 3 bougies H4 → vendre la cassure de 1.0820",catalyst:"NFP US vendredi",sl_logic:"Au-delà du PDH 1.0900 (invalidation)",tp1_logic:"PDL 1.0795 — premier obstacle",tp2_logic:"Plafonné par l'ATR / Fibo 61.8%",rr:"1:1.9"}}]
+    },
+    { icon:'💶', title:'BCE — PLANCHER PLUS HAUT', summary:"L'inflation core européenne limite la marge de baisse.", conviction:3,
+      cascade_analysis:{
+        macro_economic:{summary:"Croissance molle mais stable.",facts:["PMI en zone neutre"],source:"S&P Global",confidence:"medium"},
+        monetary_policy:{summary:"Discours moins dovish.",facts:["Membres prudents sur le rythme"],source:"BCE",confidence:"medium"},
+        economic_data:{summary:"CPI zone euro surveillé.",facts:["Core au-dessus de la cible"],source:"Eurostat",confidence:"medium"},
+        fiscal_policy:{summary:"Disparités budgétaires.",facts:["Spreads périphériques contenus"],source:"déduction",confidence:"low"},
+        intermarket:{summary:"EUR sensible au différentiel de taux.",facts:["Spread Bund-Treasury clé"],source:"intermarket",confidence:"medium"},
+        geopolitics:{summary:"Énergie sous contrôle.",facts:["Gaz stable"],source:"news",confidence:"low"},
+        technical:{summary:"EUR/USD sur support mensuel.",facts:["Test de la zone basse du range"],source:"déduction",confidence:"high"},
+        supply_demand:{summary:"Positionnement court EUR.",facts:["CTA nets vendeurs (estimé)"],source:"COT estimé",confidence:"low"}
+      },
+      what_market_believes:{
+        already_priced:[{item:"Cycle de baisses BCE en cours",confidence:"high"}],
+        mispriced:[{item:"Plancher de taux BCE plus haut qu'anticipé",thesis:"Inflation services persistante en zone euro",expected_repricing:"EUR/USD rebond si la BCE ralentit",confidence:"medium"}],
+        not_yet_priced:[{item:"Choc politique dans un pays clé",trigger:"Instabilité gouvernementale",confidence:"low"}]
+      },
+      tradable_edge:"Guetter un rebond technique de l'EUR sur le support mensuel si la BCE temporise.",
+      impacts:[{pair:'EUR/USD',direction:'long',why:"Rebond contra-trend sur support",
+        setup:{entry_market:1.0768,entry_limit:1.0752,sl:1.0710,tp1:1.0820,tp2:1.0860,entry_market_logic:"Achat sur réaction haussière au support",entry_limit_logic:"Mèche plus profonde dans le support mensuel",no_fill_rule:"Pas de mèche vers 1.0752 → acheter la cassure de 1.0785",catalyst:"CPI zone euro",sl_logic:"Sous le bas mensuel (invalidation)",tp1_logic:"Fibo 50% — premier obstacle",tp2_logic:"Plafonné ATR / PDH",rr:"1:2.0"}}]
+    },
+    { icon:'🛢️', title:'OR & RISQUE — REFUGE ACTIF', summary:"Le bid refuge soutient l'or malgré un dollar ferme.", conviction:3,
+      cascade_analysis:{
+        macro_economic:{summary:"Cycle global incertain.",facts:["Indicateurs avancés mitigés"],source:"déduction",confidence:"medium"},
+        monetary_policy:{summary:"Taux réels = clé pour l'or.",facts:["Taux réels élevés = vent contraire"],source:"FRED",confidence:"medium"},
+        economic_data:{summary:"Sensible au CPI.",facts:["Réaction attendue post-CPI"],source:"déduction",confidence:"medium"},
+        fiscal_policy:{summary:"Dette = soutien structurel.",facts:["Achats banques centrales"],source:"WGC",confidence:"medium"},
+        intermarket:{summary:"Or vs DXY/US10Y.",facts:["Corrélation inverse au dollar"],source:"intermarket",confidence:"high"},
+        geopolitics:{summary:"Prime de risque géo.",facts:["Demande refuge intermittente"],source:"news",confidence:"medium"},
+        technical:{summary:"Or sous résistance clé.",facts:["Consolidation haut de range"],source:"déduction",confidence:"medium"},
+        supply_demand:{summary:"Demande officielle forte.",facts:["Flux ETF en amélioration"],source:"déduction",confidence:"low"}
+      },
+      what_market_believes:{
+        already_priced:[{item:"Or comme couverture standard",confidence:"medium"}],
+        mispriced:[{item:"Résilience de l'or malgré taux réels hauts",thesis:"Demande structurelle des banques centrales",expected_repricing:"Cassure haussière si le dollar faiblit",confidence:"medium"}],
+        not_yet_priced:[{item:"Escalade géopolitique soudaine",trigger:"Choc d'offre énergétique",confidence:"low"}]
+      },
+      tradable_edge:"Acheter l'or sur repli vers le support si le CPI déçoit et que le dollar se détend.",
+      impacts:[{pair:'XAU/USD',direction:'long',why:"Refuge + demande officielle",
+        setup:{entry_market:2333.0,entry_limit:2322.0,sl:2305.0,tp1:2365.0,tp2:2395.0,entry_market_logic:"Achat au marché sur tenue du support",entry_limit_logic:"Repli sur support intraday 2322",no_fill_rule:"Pas de repli vers 2322 → acheter la cassure de 2348",catalyst:"Réaction post-NFP",sl_logic:"Sous le PDL (invalidation)",tp1_logic:"PDH — premier obstacle",tp2_logic:"Plafonné ATR / plus haut semaine",rr:"1:1.7"}}]
+    }
+  ]
+};
+
+/* fenêtres d'ouverture de session (heure locale Paris, éditables) */
+function currentSessionWindow(){
+  const d=new Date(); const hm=d.getHours()+d.getMinutes()/60;
+  if(hm>=1 && hm<3)   return 'Asie';
+  if(hm>=8 && hm<10)  return 'Londres';
+  if(hm>=14 && hm<16) return 'New York';
+  return null;
+}
+function lastBriefForSession(s){ return (LS.get(HKEY,[])||[]).find(it=>it.session===s) || null; }
+
+/* affiche le dernier brief + nettoyage 7j + auto-génération à l'ouverture de session */
+(function boot(){
+  // nettoyage des briefs de plus de 7 jours
+  let h=LS.get(HKEY,[]); const weekAgo=Date.now()-7*864e5;
+  const h2=h.filter(it=>{ const t=Date.parse(it.ts||0); return isNaN(t)?true:t>=weekAgo; });
+  if(h2.length!==h.length) LS.set(HKEY,h2);
+  h=h2;
+
+  // affiche le TOUT dernier brief (peu importe la session), sinon démo
+  if(h.length && h[0].brief){ renderBrief(h[0].brief); }
+  else { renderBrief(DEMO); }
+
+  // auto-génération si on ouvre l'app dans une fenêtre d'ouverture et que le dernier brief de CETTE session > 2h
+  try{
+    const sess=currentSessionWindow();
+    if(sess && S.anth){
+      setSessionUI(sess);
+      const last=lastBriefForSession(sess);
+      const age = last ? (Date.now()-Date.parse(last.ts||0)) : Infinity;
+      if(age > 2*3600*1000){
+        toast('Ouverture '+sess+' — génération du brief…');
+        setTimeout(()=>{ if($('#genBtn') && !$('#genBtn').disabled) generate(); }, 900);
+      }
+    }
+  }catch(e){}
+})();
+
+/* service worker + mise à jour automatique */
+if('serviceWorker' in navigator){
+  const hadController = !!navigator.serviceWorker.controller; // déjà contrôlée = pas une 1ère install
+  let refreshing=false;
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(refreshing) return; refreshing=true;
+    if(hadController) location.reload(); // nouvelle version active → recharge une fois
+  });
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').then(reg=>{
+      reg.update().catch(()=>{});                       // cherche une MAJ à chaque ouverture
+      setInterval(()=>reg.update().catch(()=>{}), 60*60*1000); // et toutes les heures si l'app reste ouverte
+    }).catch(()=>{});
+  });
+}
+</script>
+</body>
+</html>
