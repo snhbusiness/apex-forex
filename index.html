@@ -902,10 +902,13 @@ $('#cards').addEventListener('click', e=>{
 });
 
 /* ---------- session segmented ---------- */
+function setSessionUI(name){
+  currentSession=name;
+  document.querySelectorAll('#seg button').forEach(x=>x.classList.toggle('active', x.dataset.s===name));
+}
 $('#seg').addEventListener('click', e=>{
   const b=e.target.closest('button[data-s]'); if(!b) return;
-  document.querySelectorAll('#seg button').forEach(x=>x.classList.remove('active'));
-  b.classList.add('active'); currentSession=b.dataset.s;
+  setSessionUI(b.dataset.s);
 });
 
 /* ---------- sheets ---------- */
@@ -980,8 +983,10 @@ $('#testConn').addEventListener('click', async ()=>{
 
 /* ---------- history ---------- */
 function saveBrief(b){
-  const h=LS.get(HKEY,[]); h.unshift({ts:b.generated_at,session:b.session,headline:b.headline,brief:b});
-  LS.set(HKEY, h.slice(0,30));
+  let h=LS.get(HKEY,[]); h.unshift({ts:b.generated_at,session:b.session,headline:b.headline,brief:b});
+  const weekAgo=Date.now()-7*864e5;
+  h=h.filter(it=>{ const t=Date.parse(it.ts||0); return isNaN(t)?true:t>=weekAgo; }); // conserve 7 jours
+  LS.set(HKEY, h.slice(0,60));
 }
 function renderHistory(){
   const h=LS.get(HKEY,[]); const list=$('#histList');
@@ -1070,11 +1075,41 @@ const DEMO = {
   ]
 };
 
-/* affiche dernier brief réel sinon démo */
+/* fenêtres d'ouverture de session (heure locale Paris, éditables) */
+function currentSessionWindow(){
+  const d=new Date(); const hm=d.getHours()+d.getMinutes()/60;
+  if(hm>=1 && hm<3)   return 'Asie';
+  if(hm>=8 && hm<10)  return 'Londres';
+  if(hm>=14 && hm<16) return 'New York';
+  return null;
+}
+function lastBriefForSession(s){ return (LS.get(HKEY,[])||[]).find(it=>it.session===s) || null; }
+
+/* affiche le dernier brief + nettoyage 7j + auto-génération à l'ouverture de session */
 (function boot(){
-  const h=LS.get(HKEY,[]);
+  // nettoyage des briefs de plus de 7 jours
+  let h=LS.get(HKEY,[]); const weekAgo=Date.now()-7*864e5;
+  const h2=h.filter(it=>{ const t=Date.parse(it.ts||0); return isNaN(t)?true:t>=weekAgo; });
+  if(h2.length!==h.length) LS.set(HKEY,h2);
+  h=h2;
+
+  // affiche le TOUT dernier brief (peu importe la session), sinon démo
   if(h.length && h[0].brief){ renderBrief(h[0].brief); }
   else { renderBrief(DEMO); }
+
+  // auto-génération si on ouvre l'app dans une fenêtre d'ouverture et que le dernier brief de CETTE session > 2h
+  try{
+    const sess=currentSessionWindow();
+    if(sess && S.anth){
+      setSessionUI(sess);
+      const last=lastBriefForSession(sess);
+      const age = last ? (Date.now()-Date.parse(last.ts||0)) : Infinity;
+      if(age > 2*3600*1000){
+        toast('Ouverture '+sess+' — génération du brief…');
+        setTimeout(()=>{ if($('#genBtn') && !$('#genBtn').disabled) generate(); }, 900);
+      }
+    }
+  }catch(e){}
 })();
 
 /* service worker + mise à jour automatique */
