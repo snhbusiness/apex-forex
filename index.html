@@ -612,27 +612,48 @@ async function callClaude(marketText, today){
   const tools = S.web ? [{type:'web_search_20250305', name:'web_search', max_uses:5}] : undefined;
   const userMsg = "Génère le brief Apex FX pour la session "+currentSession+" du "+today+
     ". Utilise STRICTEMENT les niveaux techniques fournis pour les setups. Données :\n\n"+marketText;
-  let messages = [{role:'user', content:userMsg}];
-  let data=null;
-  for(let i=0;i<4;i++){
-    const body = { model:S.model, max_tokens:parseInt(S.tokens)||20000, system:SYS, messages };
-    if(tools) body.tools = tools;
-    const r = await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{
-        'content-type':'application/json',
-        'x-api-key':S.anth,
-        'anthropic-version':'2023-06-01',
-        'anthropic-dangerous-direct-browser-access':'true'
-      },
-      body: JSON.stringify(body)
-    });
-    data = await r.json();
-    if(!r.ok){ throw new Error(data?.error?.message || ('Erreur API '+r.status)); }
-    if(data.stop_reason==='pause_turn'){ messages.push({role:'assistant', content:data.content}); continue; }
-    break;
+  const body = { model:S.model, max_tokens:parseInt(S.tokens)||20000, system:SYS, stream:true,
+                 messages:[{role:'user', content:userMsg}] };
+  if(tools) body.tools = tools;
+
+  const r = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':S.anth,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){
+    let msg='Erreur API '+r.status; try{ const j=await r.json(); if(j&&j.error) msg=j.error.message; }catch(e){}
+    throw new Error(msg);
   }
-  const text = (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join("\n").trim();
+
+  // lecture du flux SSE : on accumule les text_delta (réponse incrémentale = pas de timeout)
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf='', text='', apiErr=null;
+  while(true){
+    const {done, value} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let nl;
+    while((nl = buf.indexOf('\n')) >= 0){
+      const line = buf.slice(0, nl).trim(); buf = buf.slice(nl+1);
+      if(!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if(payload==='[DONE]') continue;
+      let ev; try{ ev = JSON.parse(payload); }catch(e){ continue; }
+      if(ev.type==='content_block_delta' && ev.delta){
+        if(ev.delta.type==='text_delta' && ev.delta.text) text += ev.delta.text;
+      } else if(ev.type==='error'){ apiErr = (ev.error&&ev.error.message)||'erreur de flux'; }
+    }
+  }
+  if(apiErr) throw new Error(apiErr);
+
+  text = text.trim();
   const a=text.indexOf('{'), b=text.lastIndexOf('}');
   if(a<0||b<0) throw new Error("Réponse non-JSON reçue du modèle.");
   let parsed;
