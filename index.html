@@ -196,6 +196,9 @@ header{position:sticky;top:0;z-index:30;margin:0 -16px 8px;padding:calc(var(--sa
 .setup .sh b{font-family:'JetBrains Mono';font-weight:700;letter-spacing:.5px}
 .setup .rr{font-family:'JetBrains Mono';font-size:12px;color:var(--teal);background:var(--teal-dim);padding:4px 9px;border-radius:7px}
 .setup .cat{padding:9px 14px;background:var(--gold-dim);border-bottom:1px solid var(--line);font-size:11.5px;color:var(--gold-hi);line-height:1.35}
+.setup .sh-right{display:flex;align-items:center;gap:9px}
+.chart-link{font-family:'Archivo';font-size:11.5px;font-weight:600;color:var(--teal);text-decoration:none;border:1px solid rgba(108,198,190,.4);background:var(--teal-dim);padding:5px 9px;border-radius:8px;white-space:nowrap}
+.chart-link:active{opacity:.65}
 .lvl.e2 .tag,.lvl.e2 .px{color:var(--teal)}
 .lvls{display:flex;flex-direction:column}
 .lvl{display:flex;align-items:baseline;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line);font-size:12.5px}
@@ -408,25 +411,50 @@ async function fmpGet(path){
   }catch(e){ return null; }
 }
 async function getQuotes(pairs){
-  const j = await fmpGet('/api/v3/quote/' + pairs.join(','));
-  return Array.isArray(j) ? j : [];
+  // /stable/quote?symbol=X par paire (fiable), repli legacy batch
+  let quotes = (await Promise.all(pairs.map(async p=>{
+    const j = await fmpGet('/stable/quote?symbol=' + encodeURIComponent(p));
+    return (Array.isArray(j) && j[0]) ? j[0] : null;
+  }))).filter(Boolean);
+  if(!quotes.length){
+    const j = await fmpGet('/api/v3/quote/' + pairs.join(','));
+    if(Array.isArray(j)) quotes = j;
+  }
+  // normalise changePercentage (stable) / changesPercentage (legacy)
+  return quotes.map(q=>({ ...q, changesPercentage: (q.changesPercentage!=null ? q.changesPercentage : q.changePercentage) }));
 }
 async function getDaily(pair){
-  const j = await fmpGet('/api/v3/historical-price-full/' + pair + '?timeseries=40');
-  return (j && Array.isArray(j.historical)) ? j.historical : null; // desc (récent -> ancien)
+  const from = new Date(Date.now()-100*864e5).toISOString().slice(0,10); // ~100j pour limiter le payload
+  let j = await fmpGet('/stable/historical-price-eod/full?symbol=' + encodeURIComponent(pair) + '&from=' + from);
+  let arr = Array.isArray(j) ? j : (j && Array.isArray(j.historical) ? j.historical : null);
+  if(!arr){
+    const j2 = await fmpGet('/api/v3/historical-price-full/' + pair + '?timeseries=40');
+    arr = (j2 && Array.isArray(j2.historical)) ? j2.historical : null;
+  }
+  if(arr) arr = arr.slice().sort((a,b)=> new Date(b.date) - new Date(a.date)).slice(0,40); // desc, ~40 bougies
+  return arr;
 }
 async function getIntraday(pair, interval){
-  const j = await fmpGet('/api/v3/historical-chart/' + interval + '/' + pair);
-  if(!Array.isArray(j) || !j.length) return null;
-  return j.slice().sort((a,b)=> new Date(b.date) - new Date(a.date)); // force desc (récent -> ancien)
+  let j = await fmpGet('/stable/historical-chart/' + interval + '?symbol=' + encodeURIComponent(pair));
+  let arr = Array.isArray(j) ? j : null;
+  if(!arr){
+    const j2 = await fmpGet('/api/v3/historical-chart/' + interval + '/' + pair);
+    arr = Array.isArray(j2) ? j2 : null;
+  }
+  if(!arr || !arr.length) return null;
+  return arr.slice().sort((a,b)=> new Date(b.date) - new Date(a.date)); // force desc
 }
 async function getCalendar(from,to){
-  const j = await fmpGet('/api/v3/economic_calendar?from='+from+'&to='+to);
-  return Array.isArray(j) ? j : [];
+  let j = await fmpGet('/stable/economic-calendar?from='+from+'&to='+to);
+  if(Array.isArray(j)) return j;
+  const j2 = await fmpGet('/api/v3/economic_calendar?from='+from+'&to='+to);
+  return Array.isArray(j2) ? j2 : [];
 }
 async function getTreasury(from,to){
-  const j = await fmpGet('/api/v4/treasury?from='+from+'&to='+to);
-  return Array.isArray(j) ? j : [];
+  let j = await fmpGet('/stable/treasury-rates?from='+from+'&to='+to);
+  if(Array.isArray(j)) return j;
+  const j2 = await fmpGet('/api/v4/treasury?from='+from+'&to='+to);
+  return Array.isArray(j2) ? j2 : [];
 }
 
 /* ---------- calcul niveaux techniques ---------- */
@@ -775,6 +803,15 @@ function renderBrief(brief){
 }
 
 /* setup detail (rendu inline sous la carte via toast-sheet simplifié) */
+const FXCODES = new Set(['EUR','USD','GBP','JPY','CHF','CAD','AUD','NZD','XAU','XAG','CNH','CNY','SEK','NOK','MXN','ZAR','TRY','SGD','HKD','PLN']);
+// lien vers le graphique Investing.com (paires FX/métaux), sinon repli recherche Investing
+function investingUrl(pair){
+  const raw=(pair||'').trim();
+  const n=raw.toUpperCase().replace(/[^A-Z]/g,'');
+  if(n.length===6){ const a=n.slice(0,3), b=n.slice(3);
+    if(FXCODES.has(a)&&FXCODES.has(b)) return 'https://www.investing.com/currencies/'+a.toLowerCase()+'-'+b.toLowerCase()+'-chart'; }
+  return 'https://www.investing.com/search/?q='+encodeURIComponent(raw);
+}
 function showSetup(ti,ii){
   const im = activeBrief.themes[ti].impacts[ii]; if(!im) return;
   const su=im.setup||{}; const d=dir(im.direction);
@@ -786,8 +823,9 @@ function showSetup(ti,ii){
       + lvl('e2','Limite',su.entry_limit,su.entry_limit_logic||'Sur pullback — meilleur prix, risque de non-remplissage')
     : lvl('e','Entry',su.entry,su.entry_logic);
   const cat = su.catalyst?'<div class="cat">⚡ Catalyseur : '+esc(su.catalyst)+' — privilégier l\'entrée agressive (risque one-way)</div>':'';
+  const chart='<a class="chart-link" href="'+investingUrl(im.pair)+'" target="_blank" rel="noopener noreferrer">📈 Graphique ↗</a>';
   const html='<div class="setup">'+cat+'<div class="sh"><b>'+arrow(im.direction)+' '+esc(im.pair)+' · '+(d==='long'?'LONG':'SHORT')+'</b>'+
-    (su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+'</div><div class="lvls">'+
+    '<span class="sh-right">'+(su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+chart+'</span></div><div class="lvls">'+
     entries+
     note('Si pas de fill', su.no_fill_rule)+
     lvl('sl','SL',su.sl,su.sl_logic)+
