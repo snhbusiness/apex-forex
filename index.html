@@ -353,6 +353,8 @@ header{position:sticky;top:0;z-index:30;margin:0 -16px 8px;padding:calc(var(--sa
   <div class="note">⚠️ Une clé API dans une app statique est lisible par toute personne ayant accès à l'appareil/au site. OK pour un usage perso ; pour un site public, passe par un petit proxy serveur.</div>
 
   <button class="save" id="saveSet">Enregistrer</button>
+  <button class="danger" id="testConn" style="border-color:var(--teal);color:var(--teal)">Tester les connexions</button>
+  <div id="testOut" style="margin:10px 20px 0;font-family:'JetBrains Mono';font-size:11.5px;line-height:1.6"></div>
   <button class="danger" id="clearData">Effacer toutes les données locales</button>
 </div>
 
@@ -889,6 +891,48 @@ $('#clearData').addEventListener('click', ()=>{
   if(confirm('Effacer clés, réglages et historique de cet appareil ?')){
     LS.del(KEY); LS.del(HKEY); S=Object.assign({},DEFAULTS); closeSheets(); location.reload();
   }
+});
+
+/* ---------- diagnostic connexions ---------- */
+$('#testConn').addEventListener('click', async ()=>{
+  // prend les valeurs actuellement saisies (même non enregistrées)
+  const anth=$('#inAnth').value.trim(), fmp=$('#inFmp').value.trim();
+  const proxy=$('#swProxy').classList.contains('on');
+  const out=$('#testOut'); out.innerHTML='⏳ Test en cours…';
+  const line=(label,ok,msg)=> '<div style="margin-bottom:4px"><b style="color:'+(ok?'var(--long)':'var(--short)')+'">'+(ok?'✓':'✗')+' '+label+'</b> — '+esc(msg)+'</div>';
+  let html='';
+
+  // --- FMP (stable) ---
+  if(!fmp){ html+=line('FMP', false, 'clé vide'); }
+  else{
+    let base='https://financialmodelingprep.com/stable/quote?symbol=EURUSD&apikey='+encodeURIComponent(fmp);
+    if(proxy) base='https://corsproxy.io/?url='+encodeURIComponent(base);
+    try{
+      const r=await fetch(base); let j=null; try{ j=await r.json(); }catch(e){}
+      if(!r.ok) html+=line('FMP', false, 'HTTP '+r.status+(j&&j['Error Message']?' — '+j['Error Message']:''));
+      else if(j&&j['Error Message']) html+=line('FMP', false, j['Error Message']);
+      else if(Array.isArray(j)&&j[0]&&j[0].price) html+=line('FMP', true, 'OK — EURUSD '+j[0].price);
+      else html+=line('FMP', false, 'réponse inattendue');
+    }catch(e){ html+=line('FMP', false, 'réseau/CORS ('+e.message+') → essaie d\'activer le proxy CORS'); }
+  }
+
+  // --- Anthropic ---
+  if(!anth){ html+=line('Anthropic', false, 'clé vide'); }
+  else{
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'content-type':'application/json','x-api-key':anth,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:$('#inModel').value,max_tokens:8,messages:[{role:'user',content:'ping'}]})
+      });
+      let j=null; try{ j=await r.json(); }catch(e){}
+      if(r.ok) html+=line('Anthropic', true, 'OK — '+($('#inModel').value));
+      else html+=line('Anthropic', false, 'HTTP '+r.status+(j&&j.error?' — '+j.error.message:''));
+    }catch(e){ html+=line('Anthropic', false, 'réseau/CORS ('+e.message+')'); }
+  }
+
+  html+='<div style="color:var(--muted-2);margin-top:6px;font-family:Archivo">Un ✗ « réseau/CORS » = blocage navigateur ; un ✗ « HTTP 401/403 » = clé/crédits ; un ✗ « Invalid API KEY » = mauvaise clé FMP.</div>';
+  out.innerHTML=html;
 });
 
 /* ---------- history ---------- */
