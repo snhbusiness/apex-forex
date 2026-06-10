@@ -341,6 +341,12 @@ header{position:sticky;top:0;z-index:30;margin:0 -16px 8px;padding:calc(var(--sa
     <div class="hint">Niveaux PDH/PDL, ATR, Fibo calculés pour ces paires.</div>
   </div>
 
+  <div class="field">
+    <label>Layout TradingView (optionnel)</label>
+    <input type="text" id="inTvLayout" placeholder="https://www.tradingview.com/chart/XXXXXXXX/"/>
+    <div class="hint">Colle l'URL de ton layout sauvegardé (avec ton Pine + tes niveaux) : le bouton « TradingView » ouvrira CE layout sur le bon symbole. Sinon, chart générique.</div>
+  </div>
+
   <div class="toggle">
     <div class="tl">Recherche web <small>Vérifie dates & géopolitique en temps réel</small></div>
     <div class="sw on" id="swWeb"></div>
@@ -385,7 +391,7 @@ const KEY='apexfx_settings', HKEY='apexfx_history';
 const DEFAULTS = {
   anth:'', fmp:'', model:'claude-sonnet-4-6', tokens:20000,
   pairs:'EURUSD,GBPUSD,USDJPY,USDCHF,AUDUSD,USDCAD,XAUUSD',
-  web:true, proxy:false
+  web:true, proxy:false, tvLayout:''
 };
 let S = Object.assign({}, DEFAULTS, LS.get(KEY,{}));
 let currentSession = 'Londres';
@@ -539,6 +545,7 @@ const SYS = [
 "",
 "RÈGLES DATES (anti-hallucination) : chaque catalyseur a une date AAAA-MM-JJ vérifiée. Ne JAMAIS présenter comme 'à venir/ce soir' un événement DÉJÀ PASSÉ par rapport à la date du jour fournie. Si incertain : date 'à vérifier'. Utilise la recherche web pour vérifier dates, géopolitique et news fraîches.",
 "",
+"RÈGLE COURANT (ANTI CONTRE-COURANT — PRIORITÉ ABSOLUE) : le champ COURANT fourni (calculé prix vs SMA200/50) donne le SENS autorisé. TOUTES les entrées (limite ET cassure) d'un setup doivent être DANS LE SENS DU COURANT. Courant baissier → uniquement des ventes ; courant haussier → uniquement des achats. Un RSI survendu/suracheté qui irait CONTRE le courant n'est PAS une entrée : un RSI bas en courant baissier = continuation probable, pas un retournement. Un rebond/pullback contre le courant peut être MENTIONNÉ en texte (\"contre-courant — à éviter\") mais jamais proposé comme setup avec entrées. Mets \"aligned\":true sur chaque setup. Si le seul mouvement net est contre le courant → \"status\":\"attente\".",
 "RÈGLE HORIZON & PROXIMITÉ (INTRADAY ADAPTATIF) : chaque setup choisit son horizon selon la structure la plus propre — \"horizon\":\"scalp\" (lecture M15, sortie en minutes à 1-2h) ou \"horizon\":\"day\" (lecture H1, sortie dans la journée). Les entrées doivent être PROCHES du prix 'last'. Si l'entrée la plus propre est à plus d'environ 1,5× l'ATR_H4 (fourni, en pips) du prix actuel, ne la propose PAS comme actionnable : mets \"status\":\"attente\" et décris le déclencheur/niveau à surveiller dans 'no_fill_rule'. Sinon \"status\":\"actionnable\". Vise des trades du jour, pas du swing.",
 "RÈGLES TP/SL INTRADAY (ancrage structure, distances NON fixes) : SL = derrière l'invalidation de structure intraday la plus proche (swing M15/H1, borne H4 24-48h, order block) — la distance en pips est CELLE QUE DONNE LA STRUCTURE du moment, jamais un nombre arbitraire. TP1 = première liquidité intraday opposée (borne H4, PDH/PDL, plus haut/bas de session) ≈ 1 à 1,5R. TP2 = liquidité intraday suivante ≈ 2 à 3R, PLAFONNÉ par ~2-3× ATR_H4 (PAS l'ATR daily). R:R ≥ 1:1.5 sur TP1, sinon \"status\":\"attente\". Niveaux en PRIX absolus cohérents avec 'last'.",
 "RÈGLES D'ENTRÉE (anti-trade-raté) : fournis TOUJOURS DEUX entrées. 'entry_market' = agressive, sur cassure/clôture M15-H1 d'un niveau intraday dans le sens du trade (pour ne pas rater un mouvement one-way sur news). 'entry_limit' = repli sur OB/borne intraday (meilleur prix, risque de non-remplissage). 'no_fill_rule' = quoi faire si le repli n'arrive pas (ex : entrer sur cassure de tel niveau après N bougies M15/H1). Si un catalyseur fort est imminent (NFP, CPI, banque centrale), renseigne 'catalyst' daté et privilégie l'entrée agressive. SL et TP s'appliquent aux deux entrées.",
@@ -567,7 +574,7 @@ const SYS = [
 '    },',
 '    "tradable_edge":"où est l opportunité concrètement",',
 '    "impacts":[{"pair":"EUR/USD","direction":"short","why":"...",',
-'      "setup":{"horizon":"day","status":"actionnable","entry_market":1.0845,"entry_limit":1.0868,"sl":1.0905,"tp1":1.0795,"tp2":1.074,',
+'      "setup":{"horizon":"day","status":"actionnable","aligned":true,"entry_market":1.0845,"entry_limit":1.0868,"sl":1.0905,"tp1":1.0795,"tp2":1.074,',
 '      "entry_market_logic":"cassure/clôture H1 sous borne intraday","entry_limit_logic":"repli sur OB intraday",',
 '      "no_fill_rule":"si pas de repli sous 3 bougies H1, vendre la cassure de 1.0820",',
 '      "catalyst":"NFP US (AAAA-MM-JJ)","sl_logic":"derrière swing H1 (invalidation)","tp1_logic":"borne H4 / liquidité intraday","tp2_logic":"plafonné ~2-3x ATR_H4","rr":"1:1.8"}}]',
@@ -588,8 +595,11 @@ function buildMarketText(techs, quotes, cal, actuals, tre, today){
       (x.rsiD!=null?" | RSI_D="+x.rsiD:"")+(x.rsiH4!=null?" RSI_H4="+x.rsiH4:"")+
       (x.h4H!=null?" | H4 24h["+x.h4L+"/"+x.h4H+"] 48h["+x.h4L48+"/"+x.h4H48+"]":"")+
       (x.atrH4Pips!=null?" | ATR_H4="+x.atrH4Pips+"pips (amplitude intraday)":"")+
+      (x.sma200!=null?" | SMA50="+x.sma50+" SMA200="+x.sma200:"")+
+      (x.courant?" | COURANT="+x.courant.toUpperCase():"")+
       "\n"; });
     t += "(RSI<30 survendu, >70 suracheté ; bornes H4 [bas/haut] = liquidité intraday ; ATR_H4 = pour dimensionner SL/TP intraday ; ATR14 = contexte daily)\n";
+    t += "COURANT DAILY = SENS AUTORISÉ DES TRADES (prix vs SMA200/50). RÈGLE ABSOLUE : chaque entrée doit être DANS LE SENS DU COURANT. Courant baissier → jamais d'achat en entrée principale (RSI bas = continuation probable, pas retournement). Courant haussier → jamais de vente en entrée principale.\n";
   } else { t += "(indisponible — utilise la recherche web pour les niveaux ; signale confidence faible)\n"; }
   if(quotes.length){
     t += "\n=== QUOTES ===\n";
@@ -715,6 +725,19 @@ async function generate(){
       pairs.forEach((p,i)=>{
         const t=computeTech(p,dailies[i]); if(!t) return;
         const intra=computeIntra(p,h4s[i]); if(intra) Object.assign(t,intra);
+        // courant daily déterministe (prix vs SMA200/50) = sens autorisé des trades
+        const q=(quotes||[]).find(x=>x&&x.symbol===p);
+        if(q){
+          t.sma50=q.priceAvg50; t.sma200=q.priceAvg200;
+          const px=(q.price!=null?q.price:t.last);
+          if(t.sma200!=null && px!=null){
+            t.courant = px>t.sma200 ? 'haussier' : 'baissier';
+            if(t.sma50!=null){
+              if(t.courant==='haussier' && px<t.sma50) t.courant='haussier_faible';
+              if(t.courant==='baissier' && px>t.sma50) t.courant='baissier_faible';
+            }
+          }
+        }
         techs.push(t);
       });
     }
@@ -844,13 +867,48 @@ function renderBrief(brief){
 
 /* setup detail (rendu inline sous la carte via toast-sheet simplifié) */
 const FXCODES = new Set(['EUR','USD','GBP','JPY','CHF','CAD','AUD','NZD','XAU','XAG','CNH','CNY','SEK','NOK','MXN','ZAR','TRY','SGD','HKD','PLN']);
-// lien vers le graphique Investing.com (paires FX/métaux), sinon repli recherche Investing
-function investingUrl(pair){
+// symbole TradingView préfixé courtier (OANDA pour FX/métaux), sinon le brut
+function tvSymbol(pair){
   const raw=(pair||'').trim();
-  const n=raw.toUpperCase().replace(/[^A-Z]/g,'');
+  const n=raw.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const map={ 'US500':'OANDA:SPX500USD','SPX500':'OANDA:SPX500USD','NAS100':'OANDA:NAS100USD',
+    'GER40':'OANDA:DE40EUR','DE40':'OANDA:DE40EUR','FR40':'OANDA:FR40EUR','CAC40':'OANDA:FR40EUR',
+    'UK100':'OANDA:UK100GBP','US30':'OANDA:US30USD','JP225':'OANDA:JP225USD' };
+  if(map[n]) return map[n];
   if(n.length===6){ const a=n.slice(0,3), b=n.slice(3);
-    if(FXCODES.has(a)&&FXCODES.has(b)) return 'https://www.investing.com/currencies/'+a.toLowerCase()+'-'+b.toLowerCase()+'-chart'; }
-  return 'https://www.investing.com/search/?q='+encodeURIComponent(raw);
+    if(FXCODES.has(a)&&FXCODES.has(b)) return 'OANDA:'+a+b; }
+  return n;
+}
+// lien vers TradingView. Si un layout perso est défini (S.tvLayout), on l'ouvre avec le symbole ; sinon chart générique.
+function investingUrl(pair){
+  const sym=tvSymbol(pair);
+  if(S.tvLayout){
+    const id=String(S.tvLayout).replace(/.*chart\//,'').replace(/\/.*/,'').replace(/[^A-Za-z0-9]/g,'');
+    if(id) return 'https://www.tradingview.com/chart/'+id+'/?symbol='+encodeURIComponent(sym);
+  }
+  return 'https://www.tradingview.com/chart/?symbol='+encodeURIComponent(sym);
+}
+function copyText(id, btn){
+  const ta=document.getElementById(id); if(!ta) return;
+  try{ navigator.clipboard.writeText(ta.value); }catch(e){ ta.select&&ta.select(); try{document.execCommand('copy');}catch(_){} }
+  if(btn){ const o=btn.textContent; btn.textContent='Copié ✓'; setTimeout(()=>btn.textContent=o,1300); }
+}
+// génère un script Pine (TradingView) traçant les 2 entrées + SL/TP + badge sens
+function pineFor(im){
+  const su=im.setup||{}; const d=dir(im.direction);
+  const sens=(su.aligned===false)?'⚠ CONTRE-COURANT':'SENS OK';
+  const sym=tvSymbol(im.pair);
+  const H=(v,name,col,extra)=> (v==null?'':'hline('+Number(v)+', "'+name+'", color='+col+(extra||'')+')\n');
+  let s='//@version=5\n';
+  s+='indicator("APEX '+sym+' '+(d==='long'?'LONG':'SHORT')+'", overlay=true)\n';
+  s+=H(su.entry_market,'Entrée agressive','color.teal',', linewidth=2');
+  s+=H(su.entry_limit,'Entrée limite','color.aqua',', linewidth=2, linestyle=hline.style_dashed');
+  s+=H(su.sl,'Stop Loss','color.red',', linewidth=2');
+  s+=H(su.tp1,'TP1','color.green','');
+  s+=H(su.tp2,'TP2','color.green',', linestyle=hline.style_dashed');
+  s+='if barstate.islast\n';
+  s+='    label.new(bar_index, close, "APEX '+(d==='long'?'LONG':'SHORT')+' — '+sens+'", style=label.style_label_left, color=color.new(color.black,10), textcolor='+(su.aligned===false?'color.red':'color.yellow')+', size=size.normal)\n';
+  return s;
 }
 function showSetup(ti,ii){
   const im = activeBrief.themes[ti].impacts[ii]; if(!im) return;
@@ -863,20 +921,28 @@ function showSetup(ti,ii){
       + lvl('e2','Limite',su.entry_limit,su.entry_limit_logic||'Sur pullback — meilleur prix, risque de non-remplissage')
     : lvl('e','Entry',su.entry,su.entry_logic);
   const cat = su.catalyst?'<div class="cat">⚡ Catalyseur : '+esc(su.catalyst)+' — privilégier l\'entrée agressive (risque one-way)</div>':'';
-  const chart='<a class="chart-link" href="'+investingUrl(im.pair)+'" target="_blank" rel="noopener noreferrer">📈 Graphique ↗</a>';
+  const chart='<a class="chart-link" href="'+investingUrl(im.pair)+'" target="_blank" rel="noopener noreferrer">📈 TradingView ↗</a>';
   // badges horizon + statut intraday
   const hz = su.horizon ? '<span class="rr" style="background:rgba(110,180,255,.14);color:#6eb4ff">'+(su.horizon==='scalp'?'⚡ Scalp M15':'📅 Day H1')+'</span>' : '';
   const isWait = (su.status==='attente');
   const st = su.status ? '<span class="rr" style="background:'+(isWait?'rgba(230,180,90,.16);color:var(--gold)':'rgba(90,210,150,.14);color:var(--long)')+'">'+(isWait?'⏳ Attente':'✓ Actionnable')+'</span>' : '';
+  const al = (su.aligned===false)
+    ? '<span class="rr" style="background:rgba(230,120,120,.16);color:var(--short)">⚠ Contre-courant</span>'
+    : (su.aligned===true?'<span class="rr" style="background:rgba(90,210,150,.14);color:var(--long)">✓ Sens OK</span>':'');
   const waitBanner = isWait ? '<div class="cat" style="background:rgba(230,180,90,.10);border-color:rgba(230,180,90,.3)">⏳ Entrée trop loin pour de l\'intraday — on surveille le déclencheur, pas d\'entrée immédiate.</div>' : '';
-  const html='<div class="setup">'+cat+waitBanner+'<div class="sh"><b>'+arrow(im.direction)+' '+esc(im.pair)+' · '+(d==='long'?'LONG':'SHORT')+'</b>'+
-    '<span class="sh-right">'+hz+st+(su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+chart+'</span></div><div class="lvls">'+
+  const ccBanner = (su.aligned===false) ? '<div class="cat" style="background:rgba(230,120,120,.10);border-color:rgba(230,120,120,.35)">⚠ Ce setup est À CONTRE-COURANT du daily — à éviter. Ne jamais nager contre le courant.</div>' : '';
+  const pid='pine_'+ti+'_'+ii;
+  const pine='<div style="margin-top:10px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px"><span style="font-family:Archivo;font-size:11px;color:var(--muted-2);letter-spacing:.04em">PINE — 2 ENTRÉES À COLLER DANS TRADINGVIEW</span>'+
+    '<button onclick="copyText(\''+pid+'\',this)" style="background:var(--teal-dim);color:var(--teal);border:1px solid rgba(108,198,190,.4);border-radius:8px;padding:5px 10px;font-family:Archivo;font-weight:600;font-size:11.5px">Copier le Pine</button></div>'+
+    '<textarea id="'+pid+'" readonly style="width:100%;height:120px;background:#0c0f14;color:#cfe;border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:10px;font-family:\'JetBrains Mono\',monospace;font-size:10.5px;white-space:pre;overflow:auto">'+esc(pineFor(im))+'</textarea></div>';
+  const html='<div class="setup">'+cat+ccBanner+waitBanner+'<div class="sh"><b>'+arrow(im.direction)+' '+esc(im.pair)+' · '+(d==='long'?'LONG':'SHORT')+'</b>'+
+    '<span class="sh-right">'+al+hz+st+(su.rr?'<span class="rr">R:R '+esc(su.rr)+'</span>':'')+chart+'</span></div><div class="lvls">'+
     entries+
     note('Si pas de fill', su.no_fill_rule)+
     lvl('sl','SL',su.sl,su.sl_logic)+
     lvl('t','TP1',su.tp1,su.tp1_logic)+
     lvl('t','TP2',su.tp2,su.tp2_logic)+
-    '</div>'+(im.why?'<div class="lvl"><span class="lg">'+esc(im.why)+'</span></div>':'')+'</div>';
+    '</div>'+pine+(im.why?'<div class="lvl"><span class="lg">'+esc(im.why)+'</span></div>':'')+'</div>';
   // injecte sous la rangée d'impacts du thème concerné
   const card=$('#cards').children[ (activeBrief.demo?1:0) + ti ];
   let host=card.querySelector('.setup-host');
@@ -922,6 +988,7 @@ $('#histBtn').addEventListener('click', ()=>{ renderHistory(); openSheet('#histS
 function fillSettings(){
   $('#inAnth').value=S.anth; $('#inFmp').value=S.fmp; $('#inModel').value=S.model;
   $('#inTokens').value=S.tokens; $('#inPairs').value=S.pairs;
+  $('#inTvLayout').value=S.tvLayout||'';
   $('#swWeb').classList.toggle('on',S.web); $('#swProxy').classList.toggle('on',S.proxy);
 }
 $('#swWeb').addEventListener('click',e=>e.currentTarget.classList.toggle('on'));
@@ -930,6 +997,7 @@ $('#saveSet').addEventListener('click', ()=>{
   S.anth=$('#inAnth').value.trim(); S.fmp=$('#inFmp').value.trim();
   S.model=$('#inModel').value; S.tokens=parseInt($('#inTokens').value)||20000;
   S.pairs=$('#inPairs').value.trim()||DEFAULTS.pairs;
+  S.tvLayout=$('#inTvLayout').value.trim();
   S.web=$('#swWeb').classList.contains('on'); S.proxy=$('#swProxy').classList.contains('on');
   LS.set(KEY,S); closeSheets(); toast('Réglages enregistrés ✓');
 });
