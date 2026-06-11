@@ -548,7 +548,7 @@ const SYS = [
 "RÈGLE COURANT (ANTI CONTRE-COURANT — PRIORITÉ ABSOLUE) : le champ COURANT fourni (calculé prix vs SMA200/50) donne le SENS autorisé. TOUTES les entrées (limite ET cassure) d'un setup doivent être DANS LE SENS DU COURANT. Courant baissier → uniquement des ventes ; courant haussier → uniquement des achats. Un RSI survendu/suracheté qui irait CONTRE le courant n'est PAS une entrée : un RSI bas en courant baissier = continuation probable, pas un retournement. Un rebond/pullback contre le courant peut être MENTIONNÉ en texte (\"contre-courant — à éviter\") mais jamais proposé comme setup avec entrées. Mets \"aligned\":true sur chaque setup. Si le seul mouvement net est contre le courant → \"status\":\"attente\".",
 "RÈGLE HORIZON & PROXIMITÉ (INTRADAY ADAPTATIF) : chaque setup choisit son horizon selon la structure la plus propre — \"horizon\":\"scalp\" (lecture M15, sortie en minutes à 1-2h) ou \"horizon\":\"day\" (lecture H1, sortie dans la journée). Les entrées doivent être PROCHES du prix 'last'. Si l'entrée la plus propre est à plus d'environ 1,5× l'ATR_H4 (fourni, en pips) du prix actuel, ne la propose PAS comme actionnable : mets \"status\":\"attente\" et décris le déclencheur/niveau à surveiller dans 'no_fill_rule'. Sinon \"status\":\"actionnable\". Vise des trades du jour, pas du swing.",
 "RÈGLES TP/SL INTRADAY (ancrage structure, distances NON fixes) : SL = derrière l'invalidation de structure intraday la plus proche (swing M15/H1, borne H4 24-48h, order block) — la distance en pips est CELLE QUE DONNE LA STRUCTURE du moment, jamais un nombre arbitraire. TP1 = première liquidité intraday opposée (borne H4, PDH/PDL, plus haut/bas de session) ≈ 1 à 1,5R. TP2 = liquidité intraday suivante ≈ 2 à 3R, PLAFONNÉ par ~2-3× ATR_H4 (PAS l'ATR daily). R:R ≥ 1:1.5 sur TP1, sinon \"status\":\"attente\". Niveaux en PRIX absolus cohérents avec 'last'.",
-"RÈGLES D'ENTRÉE (anti-trade-raté) : fournis TOUJOURS DEUX entrées. 'entry_market' = agressive, sur cassure/clôture M15-H1 d'un niveau intraday dans le sens du trade (pour ne pas rater un mouvement one-way sur news). 'entry_limit' = repli sur OB/borne intraday (meilleur prix, risque de non-remplissage). 'no_fill_rule' = quoi faire si le repli n'arrive pas (ex : entrer sur cassure de tel niveau après N bougies M15/H1). Si un catalyseur fort est imminent (NFP, CPI, banque centrale), renseigne 'catalyst' daté et privilégie l'entrée agressive. SL et TP s'appliquent aux deux entrées.",
+"RÈGLES D'ENTRÉE (anti-trade-raté, SANS bougies) : fournis TOUJOURS DEUX entrées. 'entry_market' = agressive sur CASSURE confirmée par un SEUIL DE PRIX : prends le niveau intraday franchi et décale-le d'une MARGE ANTI-MÈCHE ≈ 0,15 × ATR_H4 (dans le sens du trade) — short : seuil SOUS le niveau ; long : seuil AU-DESSUS. Donne le seuil chiffré dans 'entry_market' et explique-le dans 'entry_market_logic' (ex : 'vendre sous 4123 = 4130 − marge anti-mèche'). NE PARLE JAMAIS de clôture de bougie ni de nombre de bougies. 'entry_limit' = repli sur OB/borne intraday (meilleur prix). 'no_fill_rule' = si le repli n'arrive pas : HEURE LIMITE de Paris (échéance pré-calculée selon l'horizon, format 'avant HHhMM') PUIS l'action via le SEUIL de cassure (ex : 'si pas de repli avant 23h45, vendre sous 4123'). Catalyseur imminent → 'catalyst' daté + privilégier l'agressive. SL et TP s'appliquent aux deux entrées.",
 "DONNÉES INTRADAY À UTILISER : RSI_H4 pour le momentum intraday (point 7) ; bornes H4 24h/48h + PDH/PDL + plus haut/bas de session = liquidité/niveaux de cassure intraday ; ATR_H4 (pips) pour dimensionner SL/TP intraday. RSI_D et niveaux weekly/monthly = CONTEXTE directionnel seulement, pas pour les cibles. Si 'CHIFFRES DÉJÀ PUBLIÉS (48h)' est fourni, intègre-les AU PASSÉ dans 'economic_data' sans inventer de valeurs.",
 "",
 "confidence par data point : 'high' (source vérifiée), 'medium' (déduction logique), 'low' (hypothèse).",
@@ -575,8 +575,8 @@ const SYS = [
 '    "tradable_edge":"où est l opportunité concrètement",',
 '    "impacts":[{"pair":"EUR/USD","direction":"short","why":"...",',
 '      "setup":{"horizon":"day","status":"actionnable","aligned":true,"entry_market":1.0845,"entry_limit":1.0868,"sl":1.0905,"tp1":1.0795,"tp2":1.074,',
-'      "entry_market_logic":"cassure/clôture H1 sous borne intraday","entry_limit_logic":"repli sur OB intraday",',
-'      "no_fill_rule":"si pas de repli sous 3 bougies H1, vendre la cassure de 1.0820",',
+'      "entry_market_logic":"vendre sous 4123 = 4130 − marge anti-mèche (≈0,15×ATR_H4)","entry_limit_logic":"repli sur OB intraday",',
+'      "no_fill_rule":"si pas de repli sur la zone avant 15h30, vendre sous 1.0815 (marge anti-mèche)",',
 '      "catalyst":"NFP US (AAAA-MM-JJ)","sl_logic":"derrière swing H1 (invalidation)","tp1_logic":"borne H4 / liquidité intraday","tp2_logic":"plafonné ~2-3x ATR_H4","rr":"1:1.8"}}]',
 '  }]',
 '}'
@@ -584,7 +584,11 @@ const SYS = [
 
 /* ---------- contexte marché formaté pour le prompt ---------- */
 function buildMarketText(techs, quotes, cal, actuals, tre, today){
-  let t = "DATE DU JOUR : "+today+"\nSESSION : "+currentSession+"\n\n";
+  let t = "DATE DU JOUR : "+today+"\nSESSION : "+currentSession+"\n";
+  const _now=new Date(); const _f=d=>String(d.getHours()).padStart(2,'0')+'h'+String(d.getMinutes()).padStart(2,'0');
+  const _scalp=_f(new Date(_now.getTime()+45*60000)), _day=_f(new Date(_now.getTime()+120*60000));
+  t += "HEURE DU BRIEF (Paris) : "+_f(_now)+"\n";
+  t += "ÉCHÉANCES no-fill pré-calculées (heure de Paris) — scalp ≈ "+_scalp+" (+45min) · day ≈ "+_day+" (+2h). Dans no_fill_rule, donne l'HEURE LIMITE de Paris correspondant à l'horizon du setup (format HHhMM), SANS jamais parler de bougies.\n\n";
   t += "=== NIVEAUX TECHNIQUES (calculés FMP : daily + H4) ===\n";
   if(techs.length){
     techs.forEach(x=>{ t +=
@@ -1098,7 +1102,7 @@ const DEMO = {
       },
       tradable_edge:"Acheter les replis du dollar tant que les données restent fermes, en attendant le CPI comme catalyseur.",
       impacts:[{pair:'EUR/USD',direction:'short',why:"Divergence de politique en faveur du USD",
-        setup:{entry_market:1.0845,entry_limit:1.0868,sl:1.0905,tp1:1.0795,tp2:1.0740,entry_market_logic:"Au marché / sur cassure du plus bas intraday",entry_limit_logic:"Repli sur le pivot 1.0868",no_fill_rule:"Pas de pullback vers 1.0868 sous 3 bougies H4 → vendre la cassure de 1.0820",catalyst:"NFP US vendredi",sl_logic:"Au-delà du PDH 1.0900 (invalidation)",tp1_logic:"PDL 1.0795 — premier obstacle",tp2_logic:"Plafonné par l'ATR / Fibo 61.8%",rr:"1:1.9"}}]
+        setup:{entry_market:1.0845,entry_limit:1.0868,sl:1.0905,tp1:1.0795,tp2:1.0740,entry_market_logic:"Au marché / sur cassure du plus bas intraday",entry_limit_logic:"Repli sur le pivot 1.0868",no_fill_rule:"Si pas de repli vers 1.0868 avant l’échéance day → vendre sous 1.0815 (marge anti-mèche)",catalyst:"NFP US vendredi",sl_logic:"Au-delà du PDH 1.0900 (invalidation)",tp1_logic:"PDL 1.0795 — premier obstacle",tp2_logic:"Plafonné par l'ATR / Fibo 61.8%",rr:"1:1.9"}}]
     },
     { icon:'💶', title:'BCE — PLANCHER PLUS HAUT', summary:"L'inflation core européenne limite la marge de baisse.", conviction:3,
       cascade_analysis:{
@@ -1118,7 +1122,7 @@ const DEMO = {
       },
       tradable_edge:"Guetter un rebond technique de l'EUR sur le support mensuel si la BCE temporise.",
       impacts:[{pair:'EUR/USD',direction:'long',why:"Rebond contra-trend sur support",
-        setup:{entry_market:1.0768,entry_limit:1.0752,sl:1.0710,tp1:1.0820,tp2:1.0860,entry_market_logic:"Achat sur réaction haussière au support",entry_limit_logic:"Mèche plus profonde dans le support mensuel",no_fill_rule:"Pas de mèche vers 1.0752 → acheter la cassure de 1.0785",catalyst:"CPI zone euro",sl_logic:"Sous le bas mensuel (invalidation)",tp1_logic:"Fibo 50% — premier obstacle",tp2_logic:"Plafonné ATR / PDH",rr:"1:2.0"}}]
+        setup:{entry_market:1.0768,entry_limit:1.0752,sl:1.0710,tp1:1.0820,tp2:1.0860,entry_market_logic:"Achat sur réaction haussière au support",entry_limit_logic:"Mèche plus profonde dans le support mensuel",no_fill_rule:"Si pas de mèche vers 1.0752 avant l’échéance scalp → acheter au-dessus de 1.0790 (marge anti-mèche)",catalyst:"CPI zone euro",sl_logic:"Sous le bas mensuel (invalidation)",tp1_logic:"Fibo 50% — premier obstacle",tp2_logic:"Plafonné ATR / PDH",rr:"1:2.0"}}]
     },
     { icon:'🛢️', title:'OR & RISQUE — REFUGE ACTIF', summary:"Le bid refuge soutient l'or malgré un dollar ferme.", conviction:3,
       cascade_analysis:{
@@ -1138,7 +1142,7 @@ const DEMO = {
       },
       tradable_edge:"Acheter l'or sur repli vers le support si le CPI déçoit et que le dollar se détend.",
       impacts:[{pair:'XAU/USD',direction:'long',why:"Refuge + demande officielle",
-        setup:{entry_market:2333.0,entry_limit:2322.0,sl:2305.0,tp1:2365.0,tp2:2395.0,entry_market_logic:"Achat au marché sur tenue du support",entry_limit_logic:"Repli sur support intraday 2322",no_fill_rule:"Pas de repli vers 2322 → acheter la cassure de 2348",catalyst:"Réaction post-NFP",sl_logic:"Sous le PDL (invalidation)",tp1_logic:"PDH — premier obstacle",tp2_logic:"Plafonné ATR / plus haut semaine",rr:"1:1.7"}}]
+        setup:{entry_market:2333.0,entry_limit:2322.0,sl:2305.0,tp1:2365.0,tp2:2395.0,entry_market_logic:"Achat au marché sur tenue du support",entry_limit_logic:"Repli sur support intraday 2322",no_fill_rule:"Si pas de repli vers 2322 avant l’échéance day → acheter au-dessus de 2351 (marge anti-mèche)",catalyst:"Réaction post-NFP",sl_logic:"Sous le PDL (invalidation)",tp1_logic:"PDH — premier obstacle",tp2_logic:"Plafonné ATR / plus haut semaine",rr:"1:1.7"}}]
     }
   ]
 };
@@ -1198,3 +1202,4 @@ if('serviceWorker' in navigator){
 </script>
 </body>
 </html>
+
