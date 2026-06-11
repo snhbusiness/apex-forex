@@ -1,5 +1,5 @@
 /* Apex FX — service worker (app shell cache) */
-const CACHE = 'apexfx-v9';
+const CACHE = 'apexfx-v11';
 const SHELL = [
   './',
   './index.html',
